@@ -234,6 +234,7 @@ const CAL = {
 // 2026년 5월 1일=목(4), 6월 1일=월(1) — 달력 첫 칸 요일
 const MONTH_FIRST_DOW = { 5: 4, 6: 1 }
 const MONTH_DAYS = { 5: 31, 6: 30 }
+const CAT_EMOJI = { 카페: '☕', 쇼핑: '🛍️', 편의점: '🏪', 식비: '🍜', 구독: '🔄', 장보기: '🛒', 문화: '🎬', 교통: '🚕', 고정: '🏠' }
 
 const FLOW = [
   { label: '카드값',   amount: 1800000, pct: 43, tone: 'bar' },
@@ -1197,12 +1198,11 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
               )
             })()}
 
-            {/* ▶ 📅 월별 내역 (달력) */}
+            {/* ▶ 📅 월별 내역 (달력) — 토스 스타일: 미니멀·여백·점 인디케이터 */}
             {tab === 'calendar' && (() => {
               const won = (n) => n.toLocaleString('ko-KR')
               const txns = CAL[calMonth] || []
               const total = txns.reduce((s, t) => s + t.amount, 0)
-              // 날짜별 합계
               const byDay = {}
               txns.forEach((t) => { byDay[t.d] = (byDay[t.d] || 0) + t.amount })
               const maxDay = Math.max(1, ...Object.values(byDay))
@@ -1211,67 +1211,101 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
               const cells = [...Array(firstDow).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
               const dayTxns = calDay ? txns.filter((t) => t.d === calDay) : []
               const WD = ['일', '월', '화', '수', '목', '금', '토']
+              const fixed = txns.filter((t) => t.cat === '고정').reduce((s, t) => s + t.amount, 0)
+              const variable = total - fixed
               return (
-                <div style={{ animation: 'fadeUp .3s ease' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-                    <h2 style={{ fontSize: 20, fontWeight: 800 }}>📅 월별 내역</h2>
-                    <div style={{ display: 'flex', gap: 4, background: C.surface, borderRadius: 10, padding: 4 }}>
-                      {[5, 6].map((m) => (
-                        <button key={m} onClick={() => { setCalMonth(m); setCalDay(null) }} style={{
-                          padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                          background: calMonth === m ? C.bar : 'transparent', color: calMonth === m ? '#fff' : C.sub,
-                        }}>{m}월</button>
-                      ))}
+                <div style={{ animation: 'fadeUp .3s ease', maxWidth: 460, margin: '0 auto' }}>
+                  {/* 월 전환 헤더 */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18, marginBottom: 22 }}>
+                    <button onClick={() => { setCalMonth(5); setCalDay(null) }} disabled={calMonth === 5}
+                      style={{ background: 'none', border: 'none', cursor: calMonth === 5 ? 'default' : 'pointer', color: calMonth === 5 ? C.line : C.sub, fontSize: 22, lineHeight: 1, padding: 4 }}>‹</button>
+                    <div style={{ textAlign: 'center', minWidth: 96 }}>
+                      <div style={{ fontSize: 13, color: C.sub, fontWeight: 600 }}>2026</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: '-0.5px' }}>{calMonth}월</div>
                     </div>
-                    <span style={{ marginLeft: 'auto', fontSize: 14, color: C.sub }}>이번 달 지출 <b style={{ color: C.text, fontSize: 16 }}>{won(total)}원</b></span>
+                    <button onClick={() => { setCalMonth(6); setCalDay(null) }} disabled={calMonth === 6}
+                      style={{ background: 'none', border: 'none', cursor: calMonth === 6 ? 'default' : 'pointer', color: calMonth === 6 ? C.line : C.sub, fontSize: 22, lineHeight: 1, padding: 4 }}>›</button>
+                  </div>
+
+                  {/* 이번 달 지출 요약 카드 */}
+                  <div style={{ background: C.side, borderRadius: 18, padding: '18px 20px', marginBottom: 22, boxShadow: 'var(--shadow-card, 0 8px 24px rgba(58,40,23,.06))' }}>
+                    <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 6 }}>{calMonth}월 총 지출</div>
+                    <div style={{ fontSize: 30, fontWeight: 800, color: C.text, letterSpacing: '-1px', lineHeight: 1 }}>{won(total)}<span style={{ fontSize: 16, fontWeight: 600, color: C.sub }}>원</span></div>
+                    <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: C.sub }}>고정 지출</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{won(fixed)}원</div>
+                      </div>
+                      <div style={{ width: 1, background: C.line }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: C.sub }}>변동 지출</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: C.bar }}>{won(variable)}원</div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* 요일 헤더 */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 8 }}>
                     {WD.map((w, i) => (
-                      <div key={w} style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: i === 0 ? C.red : i === 6 ? C.blue : C.sub }}>{w}</div>
+                      <div key={w} style={{ textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: i === 0 ? C.red : i === 6 ? C.blue : C.sub }}>{w}</div>
                     ))}
                   </div>
-                  {/* 날짜 셀 */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+                  {/* 날짜 셀 — 테두리 없이, 지출일엔 점, 선택일은 채운 원 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', rowGap: 4 }}>
                     {cells.map((d, i) => {
                       if (d === null) return <div key={`e${i}`} />
                       const amt = byDay[d] || 0
                       const has = amt > 0
                       const sel = calDay === d
-                      const intensity = has ? 0.15 + 0.55 * (amt / maxDay) : 0
+                      const dotSize = has ? 4 + Math.round(4 * (amt / maxDay)) : 0
                       return (
                         <button key={d} onClick={() => setCalDay(sel ? null : d)} style={{
-                          aspectRatio: '1 / 1', borderRadius: 10, cursor: 'pointer', padding: 4,
-                          border: `1px solid ${sel ? C.bar : C.line}`,
-                          background: sel ? C.bar : (has ? `rgba(201,160,99,${intensity})` : C.side),
-                          color: sel ? '#fff' : C.text,
-                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                          background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                         }}>
-                          <span style={{ fontSize: 12, fontWeight: 700 }}>{d}</span>
-                          {has && <span style={{ fontSize: 9, opacity: .9 }}>{amt >= 10000 ? `${Math.round(amt / 1000)}k` : won(amt)}</span>}
+                          <span style={{
+                            width: 32, height: 32, borderRadius: '50%',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 13.5, fontWeight: sel ? 800 : 500,
+                            background: sel ? C.bar : 'transparent',
+                            color: sel ? '#fff' : C.text,
+                            transition: 'background .15s',
+                          }}>{d}</span>
+                          <span style={{
+                            width: dotSize, height: dotSize, borderRadius: '50%',
+                            background: sel ? C.bar : (has ? C.bar : 'transparent'),
+                            opacity: sel ? 0 : 0.85,
+                          }} />
                         </button>
                       )
                     })}
                   </div>
 
                   {/* 선택한 날짜 상세 */}
-                  <div style={{ marginTop: 18 }}>
+                  <div style={{ marginTop: 22 }}>
                     {calDay ? (
                       <>
-                        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>{calMonth}월 {calDay}일 · {won(byDay[calDay] || 0)}원</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{calMonth}월 {calDay}일</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{won(byDay[calDay] || 0)}원</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
                           {dayTxns.map((t, j) => (
-                            <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.side, border: `1px solid ${C.line}`, borderRadius: 12, padding: '11px 14px' }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: C.sub, background: C.surface, border: `1px solid ${C.line}`, borderRadius: 6, padding: '2px 8px' }}>{t.cat}</span>
-                              <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{t.merchant}</span>
-                              <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 800, color: C.text }}>{won(t.amount)}원</span>
+                            <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 2px', borderBottom: j < dayTxns.length - 1 ? `1px solid ${C.line}` : 'none' }}>
+                              <div style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.surface, fontSize: 16 }}>
+                                {CAT_EMOJI[t.cat] || '💳'}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 14.5, fontWeight: 600, color: C.text }}>{t.merchant}</div>
+                                <div style={{ fontSize: 12, color: C.sub, marginTop: 1 }}>{t.cat}</div>
+                              </div>
+                              <span style={{ fontSize: 14.5, fontWeight: 700, color: C.text }}>{won(t.amount)}원</span>
                             </div>
                           ))}
                         </div>
                       </>
                     ) : (
-                      <p style={{ color: C.sub, fontSize: 13 }}>날짜를 누르면 그날 결제 내역이 보여요. 색이 진할수록 지출이 큰 날이에요.</p>
+                      <p style={{ color: C.sub, fontSize: 13, textAlign: 'center' }}>날짜를 누르면 그날 결제 내역을 볼 수 있어요</p>
                     )}
                   </div>
                 </div>
