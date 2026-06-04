@@ -144,7 +144,7 @@ function Badge({ tone, children, C }) {
 }
 
 export default function Dashboard({ onOpenChat, onAskQuestion }) {
-  const [tab, setTab] = useState('mission')
+  const [tab, setTab] = useState('subs')
   const [statusFilter, setStatusFilter] = useState('전체')
   const [q, setQ] = useState('')
   const [refundQ, setRefundQ] = useState('')
@@ -306,11 +306,11 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
         {/* 좌측 사이드바 */}
         <aside style={{ width: 176, minHeight: 'calc(100vh - 52px)', background: C.side, padding: '20px 12px', flexShrink: 0 }}>
           {[
-            { k: 'mission', icon: '🎯', label: '오늘의 미션' },
             { k: 'subs', icon: '📋', label: '구독 목록' },
             { k: 'flow', icon: '📊', label: '현금 흐름' },
             { k: 'refund', icon: '↩️', label: '환불 진단' },
             { k: 'scenario', icon: '💬', label: '대화 시나리오' },
+            { k: 'mission', icon: '🎯', label: '오늘의 미션' },
           ].map((it) => (
             <button key={it.k} onClick={() => setTab(it.k)} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px',
@@ -355,11 +355,11 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
           {/* 탭 */}
           <div style={{ display: 'flex', gap: 24, padding: '0 32px', borderBottom: `1px solid ${C.line}` }}>
             {[
-              { k: 'mission', label: '🎯 오늘의 미션' },
               { k: 'subs', label: '📋 구독 목록' },
               { k: 'flow', label: '📊 현금 흐름' },
               { k: 'refund', label: '↩️ 환불 진단' },
               { k: 'scenario', label: '💬 대화 시나리오' },
+              { k: 'mission', label: '🎯 오늘의 미션' },
             ].map((t) => (
               <button key={t.k} onClick={() => setTab(t.k)} style={{
                 padding: '16px 2px', background: 'none', border: 'none', cursor: 'pointer',

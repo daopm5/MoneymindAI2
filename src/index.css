@@ -72,13 +72,19 @@
   --vis-glow:      drop-shadow(0 0 14px rgba(217, 176, 116, 0.3)) drop-shadow(0 0 28px rgba(201, 160, 99, 0.16));
 }
 
-html, body, #root {
+html, body {
   height: 100%;
   font-family: 'Noto Sans KR', -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
-  overflow: hidden;
+  overflow-x: hidden;          /* 가로 스크롤만 차단 */
+  overflow-y: auto;            /* 세로 스크롤 허용 — 대시보드가 길어지면 스크롤됨 */
+  -webkit-overflow-scrolling: touch;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#root {
+  min-height: 100%;
 }
 
 ::-webkit-scrollbar { width: 4px; }
