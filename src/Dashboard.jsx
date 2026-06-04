@@ -234,7 +234,27 @@ const CAL = {
 // 2026년 5월 1일=목(4), 6월 1일=월(1) — 달력 첫 칸 요일
 const MONTH_FIRST_DOW = { 5: 4, 6: 1 }
 const MONTH_DAYS = { 5: 31, 6: 30 }
-const CAT_EMOJI = { 카페: '☕', 쇼핑: '🛍️', 편의점: '🏪', 식비: '🍜', 구독: '🔄', 장보기: '🛒', 문화: '🎬', 교통: '🚕', 고정: '🏠' }
+const CAT_EMOJI = { 카페: '☕', 쇼핑: '🛍️', 편의점: '🏪', 식비: '🍜', 구독: '🔄', 장보기: '🛒', 문화: '🎬', 교통: '🚕', 고정: '🏠', 식대접대: '🍽️', 'SW·구독': '💻', 출장: '✈️', 사무용품: '📎', 숙박: '🏨' }
+
+// 🗓️ 법인 지출 달력 (B2B) — 법인카드 결제 5·6월 예시 (부서·위험도 포함)
+const CAL_B2B = {
+  5: [
+    { d: 3,  merchant: 'KTX 서울-부산', amount: 119800, cat: '출장',    dept: '재무팀',   tone: 'green' },
+    { d: 7,  merchant: 'Adobe CC',      amount: 76000,  cat: 'SW·구독', dept: '디자인팀', tone: 'amber' },
+    { d: 10, merchant: '오피스디포',     amount: 43000,  cat: '사무용품', dept: '경영지원', tone: 'green' },
+    { d: 11, merchant: '강남 고깃집',    amount: 184000, cat: '식대접대', dept: '영업1팀',  tone: 'red' },
+    { d: 18, merchant: '네이버클라우드', amount: 132000, cat: 'SW·구독', dept: '개발팀',   tone: 'amber' },
+    { d: 24, merchant: '제주 횟집',      amount: 142000, cat: '식대접대', dept: '영업1팀',  tone: 'red' },
+  ],
+  6: [
+    { d: 2,  merchant: 'Slack 비즈니스', amount: 360000, cat: 'SW·구독', dept: '전사',     tone: 'amber' },
+    { d: 5,  merchant: '쿠팡 생활용품',  amount: 43500,  cat: '사무용품', dept: '경영지원', tone: 'red' },
+    { d: 9,  merchant: 'GitHub Copilot', amount: 114000, cat: 'SW·구독', dept: '개발팀',   tone: 'red' },
+    { d: 14, merchant: '택시 (심야)',    amount: 28000,  cat: '출장',    dept: '기획팀',   tone: 'amber' },
+    { d: 20, merchant: '속초 리조트',    amount: 210000, cat: '숙박',    dept: '디자인팀', tone: 'green' },
+    { d: 27, merchant: '강남 바',        amount: 88000,  cat: '식대접대', dept: '기획팀',   tone: 'red' },
+  ],
+}
 
 const FLOW = [
   { label: '카드값',   amount: 1800000, pct: 43, tone: 'bar' },
@@ -308,11 +328,12 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
     { k: 'flow',     icon: '📊', label: '현금 흐름',      group: 'b2c' },
     { k: 'refund',   icon: '↩️', label: '환불 진단',      group: 'b2c' },
     { k: 'mission',  icon: '🎯', label: '오늘의 미션',    group: 'b2c' },
+    { k: 'calendar', icon: '📅', label: '월별 내역',      group: 'b2c' },
     { k: 'audit',    icon: '🛡️', label: 'AI 경비 감사',   group: 'b2b' },
     { k: 'weekend',  icon: '🗓️', label: '주말 결제 확인', group: 'b2b' },
     { k: 'license',  icon: '💳', label: '미사용 라이선스', group: 'b2b' },
+    { k: 'calendarB', icon: '🗓️', label: '법인 지출 달력', group: 'b2b' },
     { k: 'scenario', icon: '💬', label: '대화 시나리오',  group: 'both' },
-    { k: 'calendar', icon: '📅', label: '월별 내역',      group: 'both' },
   ]
   const [grp, setGrp] = useState('b2c')   // 현재 보고 있는 그룹
   const [calMonth, setCalMonth] = useState(5)   // 달력: 5월/6월
@@ -1306,6 +1327,123 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                       </>
                     ) : (
                       <p style={{ color: C.sub, fontSize: 13, textAlign: 'center' }}>날짜를 누르면 그날 결제 내역을 볼 수 있어요</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ▶ 🗓️ 법인 지출 달력 (B2B) */}
+            {tab === 'calendarB' && (() => {
+              const won = (n) => n.toLocaleString('ko-KR')
+              const txns = CAL_B2B[calMonth] || []
+              const total = txns.reduce((s, t) => s + t.amount, 0)
+              const byDay = {}
+              txns.forEach((t) => { byDay[t.d] = (byDay[t.d] || 0) + t.amount })
+              const maxDay = Math.max(1, ...Object.values(byDay))
+              const days = MONTH_DAYS[calMonth]
+              const firstDow = MONTH_FIRST_DOW[calMonth]
+              const cells = [...Array(firstDow).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
+              const dayTxns = calDay ? txns.filter((t) => t.d === calDay) : []
+              const WD = ['일', '월', '화', '수', '목', '금', '토']
+              const highCnt = txns.filter((t) => t.tone === 'red').length
+              const dotColor = (tone) => tone === 'red' ? C.red : tone === 'amber' ? C.amber : C.green
+              const dayTone = (d) => {
+                const ts = txns.filter((t) => t.d === d)
+                if (ts.some((t) => t.tone === 'red')) return 'red'
+                if (ts.some((t) => t.tone === 'amber')) return 'amber'
+                return 'green'
+              }
+              return (
+                <div style={{ animation: 'fadeUp .3s ease', maxWidth: 460, margin: '0 auto' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18, marginBottom: 22 }}>
+                    <button onClick={() => { setCalMonth(5); setCalDay(null) }} disabled={calMonth === 5}
+                      style={{ background: 'none', border: 'none', cursor: calMonth === 5 ? 'default' : 'pointer', color: calMonth === 5 ? C.line : C.sub, fontSize: 22, lineHeight: 1, padding: 4 }}>‹</button>
+                    <div style={{ textAlign: 'center', minWidth: 96 }}>
+                      <div style={{ fontSize: 13, color: C.sub, fontWeight: 600 }}>2026 · 법인카드</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: C.text, letterSpacing: '-0.5px' }}>{calMonth}월</div>
+                    </div>
+                    <button onClick={() => { setCalMonth(6); setCalDay(null) }} disabled={calMonth === 6}
+                      style={{ background: 'none', border: 'none', cursor: calMonth === 6 ? 'default' : 'pointer', color: calMonth === 6 ? C.line : C.sub, fontSize: 22, lineHeight: 1, padding: 4 }}>›</button>
+                  </div>
+
+                  <div style={{ background: C.side, borderRadius: 18, padding: '18px 20px', marginBottom: 22, boxShadow: 'var(--shadow-card, 0 8px 24px rgba(58,40,23,.06))' }}>
+                    <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 6 }}>{calMonth}월 법인카드 지출</div>
+                    <div style={{ fontSize: 30, fontWeight: 800, color: C.text, letterSpacing: '-1px', lineHeight: 1 }}>{won(total)}<span style={{ fontSize: 16, fontWeight: 600, color: C.sub }}>원</span></div>
+                    <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: C.sub }}>결제 건수</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{txns.length}건</div>
+                      </div>
+                      <div style={{ width: 1, background: C.line }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, color: C.sub }}>고위험 건</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: C.red }}>{highCnt}건</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 8 }}>
+                    {WD.map((w, i) => (
+                      <div key={w} style={{ textAlign: 'center', fontSize: 11.5, fontWeight: 600, color: i === 0 ? C.red : i === 6 ? C.blue : C.sub }}>{w}</div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', rowGap: 4 }}>
+                    {cells.map((d, i) => {
+                      if (d === null) return <div key={`e${i}`} />
+                      const amt = byDay[d] || 0
+                      const has = amt > 0
+                      const sel = calDay === d
+                      const dotSize = has ? 4 + Math.round(4 * (amt / maxDay)) : 0
+                      return (
+                        <button key={d} onClick={() => setCalDay(sel ? null : d)} style={{
+                          background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                        }}>
+                          <span style={{
+                            width: 32, height: 32, borderRadius: '50%',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 13.5, fontWeight: sel ? 800 : 500,
+                            background: sel ? C.bar : 'transparent',
+                            color: sel ? '#fff' : C.text, transition: 'background .15s',
+                          }}>{d}</span>
+                          <span style={{
+                            width: dotSize, height: dotSize, borderRadius: '50%',
+                            background: sel ? 'transparent' : (has ? dotColor(dayTone(d)) : 'transparent'),
+                            opacity: 0.9,
+                          }} />
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 22 }}>
+                    {calDay ? (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{calMonth}월 {calDay}일</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{won(byDay[calDay] || 0)}원</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          {dayTxns.map((t, j) => (
+                            <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 2px', borderBottom: j < dayTxns.length - 1 ? `1px solid ${C.line}` : 'none' }}>
+                              <div style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.surface, fontSize: 16 }}>
+                                {CAT_EMOJI[t.cat] || '💳'}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 14.5, fontWeight: 600, color: C.text }}>{t.merchant}</span>
+                                  <Badge tone={t.tone} C={C}>{t.tone === 'red' ? '고위험' : t.tone === 'amber' ? '확인' : '정상'}</Badge>
+                                </div>
+                                <div style={{ fontSize: 12, color: C.sub, marginTop: 1 }}>{t.dept} · {t.cat}</div>
+                              </div>
+                              <span style={{ fontSize: 14.5, fontWeight: 700, color: C.text }}>{won(t.amount)}원</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p style={{ color: C.sub, fontSize: 13, textAlign: 'center' }}>날짜를 누르면 그날 법인카드 결제 내역을 볼 수 있어요 · 점 색이 위험도예요</p>
                     )}
                   </div>
                 </div>
