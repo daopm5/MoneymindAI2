@@ -140,6 +140,51 @@ function buildAuditAnswer({ merchant, dept, wonStr, when, category, level, score
     + `\n\n📋 권고: ${verdict}`
 }
 
+// 🗓️ 주말 결제 — 자동 위험 판정 (tone) + 동적 답변
+function scoreWeekend({ merchant = '', amount = '0', hour = 12, offsite = false }) {
+  const won = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0
+  let risk = 0
+  if (hour >= 22 || hour < 6) risk += 2
+  if (offsite) risk += 1
+  if (/주점|바|고깃집|호프|노래|유흥|횟집|술/.test(merchant)) risk += 2
+  if (/생활용품|마트|편의점|쿠팡|배달/.test(merchant)) risk += 1
+  if (won >= 200000) risk += 1
+  const tone = risk >= 3 ? 'red' : 'amber'
+  return { tone }
+}
+function buildWeekendAnswer({ merchant, dept, who, wonStr, when, place, tone }) {
+  const head = tone === 'red' ? '🗓️ 주말 개인지역 결제 확인 요청 — 고위험 🚨' : '🗓️ 주말 개인지역 결제 확인 요청'
+  return `${head}\n`
+    + `\n· ${dept} ${who} · ${when} · ${place} · ${wonStr}원`
+    + `\n· 가맹점: ${merchant}`
+    + `\n\n담당자에게 '업무 관련성 소명' 알림을 발송했습니다.`
+    + `\n3일 내 미소명 시 개인용(환수 대상)으로 자동 분류됩니다.`
+}
+
+// 💳 미사용 라이선스 — 좌석 사용률로 자동 판정 + 동적 답변
+function scoreLicense({ seats = 0, used = 0 }) {
+  const idle = Math.max(seats - used, 0)
+  const rate = seats > 0 ? used / seats : 1
+  const tone = rate < 0.6 ? 'red' : rate < 0.9 ? 'amber' : 'green'
+  const note = idle > 0
+    ? (tone === 'red' ? `${idle}좌석 미사용 — 즉시 해지 권장` : `${idle}좌석 정리 가능`)
+    : '전 좌석 활성 — 유지 권장'
+  return { tone, idle, note }
+}
+function buildLicenseAnswer({ name, dept, seats, used, monthly, idle, tone }) {
+  const won = (n) => n.toLocaleString('ko-KR')
+  const perSeat = seats > 0 ? Math.round(monthly / seats) : 0
+  const save = perSeat * idle
+  if (idle <= 0) {
+    return `💳 ${name} 점검 결과\n\n· ${dept} · 좌석 ${used}/${seats} 전원 활성\n· 월 ${won(monthly)}원 — 낭비 없음\n\n✅ 현 상태 유지를 권장합니다.`
+  }
+  return `💳 ${name} 점검 결과\n`
+    + `\n· ${dept} · 좌석 ${used}/${seats} 사용 (미사용 ${idle})`
+    + `\n· 미사용분 월 약 ${won(save)}원 낭비 중`
+    + `\n\n✅ ${idle}좌석 정리 시 월 ${won(save)}원 · 연 ${won(save * 12)}원 절감`
+    + `\n관리자 콘솔 → 미사용 계정 → 라이선스 회수 순으로 진행하세요.`
+}
+
 // 🗓️ 주말 개인지역 결제 — 주말·근무지 외 지역에서 발생한 법인카드 결제만 모아
 // 직원에게 '업무 관련성 확인'을 요청. status: 대기중 / 업무확인 / 개인용
 const WEEKEND = [
@@ -368,6 +413,74 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
     const next = myAudit.filter((_, i) => i !== idx)
     setMyAudit(next)
     try { localStorage.setItem('gotgani_myaudit', JSON.stringify(next)) } catch {}
+  }
+
+  // 🗓️ 주말 결제 — 사용자 추가분
+  const [myWk, setMyWk] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gotgani_mywk') || '[]') } catch { return [] }
+  })
+  const [wkForm, setWkForm] = useState({ merchant: '', dept: '', who: '', amount: '', hour: '20', offsite: true })
+  const addWk = () => {
+    if (!wkForm.merchant.trim() || !wkForm.amount.trim()) return
+    const merchant = wkForm.merchant.trim()
+    const dept = wkForm.dept.trim() || '미지정'
+    const who = wkForm.who.trim() || '담당자'
+    const hour = parseInt(wkForm.hour, 10) || 20
+    const wonStr = (parseInt(wkForm.amount.replace(/[^0-9]/g, ''), 10) || 0).toLocaleString('ko-KR')
+    const place = wkForm.offsite ? '근무지 외' : (hour >= 22 || hour < 6 ? '심야 결제' : '주말 결제')
+    const when = `주말 ${String(hour).padStart(2, '0')}:00`
+    const sc = scoreWeekend({ merchant, amount: wkForm.amount, hour, offsite: wkForm.offsite })
+    const entry = {
+      merchant, dept, who, amount: wonStr, when, place, status: '대기중', tone: sc.tone,
+      ask: `주말에 ${merchant}에서 결제된 법인카드 ${wonStr}원의 업무 관련성을 확인 요청해줘`,
+      answer: buildWeekendAnswer({ merchant, dept, who, wonStr, when, place, tone: sc.tone }),
+      _mine: true,
+    }
+    const next = [entry, ...myWk]
+    setMyWk(next)
+    try { localStorage.setItem('gotgani_mywk', JSON.stringify(next)) } catch {}
+    setWkForm({ merchant: '', dept: '', who: '', amount: '', hour: '20', offsite: true })
+  }
+  const removeWk = (idx) => {
+    const next = myWk.filter((_, i) => i !== idx)
+    setMyWk(next)
+    try { localStorage.setItem('gotgani_mywk', JSON.stringify(next)) } catch {}
+  }
+  const setMyWkStatus = (idx, v) => {
+    const next = myWk.map((w, i) => (i === idx ? { ...w, status: v } : w))
+    setMyWk(next)
+    try { localStorage.setItem('gotgani_mywk', JSON.stringify(next)) } catch {}
+  }
+
+  // 💳 미사용 라이선스 — 사용자 추가분
+  const [myLic, setMyLic] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gotgani_mylic') || '[]') } catch { return [] }
+  })
+  const [licForm, setLicForm] = useState({ name: '', dept: '', seats: '', used: '', monthly: '' })
+  const addLic = () => {
+    if (!licForm.name.trim() || !licForm.seats.trim()) return
+    const name = licForm.name.trim()
+    const dept = licForm.dept.trim() || '미지정'
+    const seats = parseInt(licForm.seats.replace(/[^0-9]/g, ''), 10) || 0
+    const used = Math.min(parseInt(licForm.used.replace(/[^0-9]/g, ''), 10) || 0, seats)
+    const monthly = parseInt(licForm.monthly.replace(/[^0-9]/g, ''), 10) || 0
+    const sc = scoreLicense({ seats, used })
+    const entry = {
+      name, dept, seats, used, monthly, tone: sc.tone, note: sc.note,
+      lastLogin: sc.idle > 0 ? `${sc.idle}좌석 미사용` : '전원 활성',
+      ask: sc.idle > 0 ? `${name} ${seats}좌석 중 ${sc.idle}개가 미사용인데 정리 방법을 알려줘` : null,
+      answer: buildLicenseAnswer({ name, dept, seats, used, monthly, idle: sc.idle, tone: sc.tone }),
+      _mine: true,
+    }
+    const next = [entry, ...myLic]
+    setMyLic(next)
+    try { localStorage.setItem('gotgani_mylic', JSON.stringify(next)) } catch {}
+    setLicForm({ name: '', dept: '', seats: '', used: '', monthly: '' })
+  }
+  const removeLic = (idx) => {
+    const next = myLic.filter((_, i) => i !== idx)
+    setMyLic(next)
+    try { localStorage.setItem('gotgani_mylic', JSON.stringify(next)) } catch {}
   }
 
   // 추가 폼
@@ -871,7 +984,11 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                 '업무확인': { tone: 'green', label: '업무용 확인됨' },
                 '개인용':   { tone: 'red',   label: '개인용 (회수 대상)' },
               }
-              const pending = wkStatus.filter((s) => s === '대기중').length
+              const allWk = [
+                ...myWk.map((w, i) => ({ ...w, _src: 'mine', _i: i })),
+                ...WEEKEND.map((w, i) => ({ ...w, _src: 'ex', _i: i, status: wkStatus[i] || '대기중' })),
+              ]
+              const pending = allWk.filter((w) => w.status === '대기중').length
               return (
                 <div style={{ animation: 'fadeUp .3s ease' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -883,15 +1000,42 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                     주말·근무지 외 지역에서 발생한 법인카드 결제입니다. 각 건의 업무 관련성을 담당자에게 확인 요청하세요.
                   </p>
 
+                  {/* ➕ 주말 결제 내역 추가 */}
+                  <div style={{ background: C.side, border: `1px dashed ${C.bar}`, borderRadius: 14, padding: '14px 16px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, marginBottom: 10 }}>➕ 주말 결제 추가 <span style={{ color: C.sub, fontWeight: 500 }}>— 넣으면 곳간이가 위험도를 매겨요</span></div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <input value={wkForm.merchant} onChange={(e) => setWkForm({ ...wkForm, merchant: e.target.value })} placeholder="가맹점 (예: 제주 횟집)"
+                        style={{ flex: '2 1 150px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={wkForm.dept} onChange={(e) => setWkForm({ ...wkForm, dept: e.target.value })} placeholder="부서"
+                        style={{ flex: '1 1 80px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={wkForm.who} onChange={(e) => setWkForm({ ...wkForm, who: e.target.value })} placeholder="결제자"
+                        style={{ flex: '1 1 80px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={wkForm.amount} onChange={(e) => setWkForm({ ...wkForm, amount: e.target.value })} placeholder="금액 (원)" inputMode="numeric"
+                        style={{ flex: '1 1 90px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                      <select value={wkForm.hour} onChange={(e) => setWkForm({ ...wkForm, hour: e.target.value })}
+                        style={{ background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }}>
+                        {Array.from({ length: 24 }, (_, h) => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}시</option>)}
+                      </select>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.sub, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={wkForm.offsite} onChange={(e) => setWkForm({ ...wkForm, offsite: e.target.checked })} /> 근무지 외
+                      </label>
+                      <button onClick={addWk} style={{ marginLeft: 'auto', background: C.bar, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>분석 + 추가</button>
+                    </div>
+                  </div>
+
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {WEEKEND.map((w, i) => {
-                      const st = wkStatus[i] || '대기중'
+                    {allWk.map((w, i) => {
+                      const st = w.status || '대기중'
                       const meta = STATUS_META[st] || STATUS_META['대기중']
+                      const setSt = (v) => (w._src === 'mine' ? setMyWkStatus(w._i, v) : setWk(w._i, v))
                       return (
-                        <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
+                        <div key={`${w._src}-${w._i}`} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{w.merchant}</span>
                             <Badge tone={meta.tone} C={C}>{meta.label}</Badge>
+                            {w._src === 'mine' && <span style={{ fontSize: 11, color: C.bar, fontWeight: 700 }}>내가 추가함</span>}
                           </div>
                           <div style={{ fontSize: 12.5, color: C.sub, marginTop: 3 }}>
                             {w.dept} · {w.who} · {w.when} · {w.amount}원 · <span style={{ color: C.red }}>{w.place}</span>
@@ -902,22 +1046,28 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                             {st === '대기중' ? (
                               <>
                                 {w.ask && (
-                                  <button onClick={() => (onAskQuestion ? onAskQuestion(w.ask) : onOpenChat?.())} style={{
+                                  <button onClick={() => (onAskQuestion ? onAskQuestion(w.ask, w.answer || null) : onOpenChat?.())} style={{
                                     background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
                                     padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                                   }}>업무 관련성 확인 요청</button>
                                 )}
-                                <button onClick={() => setWk(i, '업무확인')} style={{
+                                <button onClick={() => setSt('업무확인')} style={{
                                   background: 'transparent', color: C.green, border: `1px solid ${C.green}`, borderRadius: 10,
                                   padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                                 }}>업무용으로 확인</button>
-                                <button onClick={() => setWk(i, '개인용')} style={{
+                                <button onClick={() => setSt('개인용')} style={{
                                   background: 'transparent', color: C.red, border: `1px solid ${C.red}`, borderRadius: 10,
                                   padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                                 }}>개인용으로 처리</button>
+                                {w._src === 'mine' && (
+                                  <button onClick={() => removeWk(w._i)} style={{
+                                    background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                                    padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                  }}>삭제</button>
+                                )}
                               </>
                             ) : (
-                              <button onClick={() => setWk(i, '대기중')} style={{
+                              <button onClick={() => setSt('대기중')} style={{
                                 background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
                                 padding: '7px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
                               }}>↺ 다시 확인 대기로</button>
@@ -937,12 +1087,13 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
             {/* ▶ 💳 미사용 라이선스 */}
             {tab === 'license' && (() => {
               const won = (n) => n.toLocaleString('ko-KR')
+              const allLic = [...myLic, ...LICENSE]
               // 미사용 좌석 비율로 낭비 추정액 계산
-              const waste = LICENSE.reduce((s, l) => {
+              const waste = allLic.reduce((s, l) => {
                 const idle = l.seats - l.used
                 return s + (idle > 0 ? Math.round((l.monthly / l.seats) * idle) : 0)
               }, 0)
-              const cutCount = LICENSE.filter((l) => l.tone === 'red').length
+              const cutCount = allLic.filter((l) => l.tone === 'red').length
               return (
                 <div style={{ animation: 'fadeUp .3s ease' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
@@ -968,16 +1119,38 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                     </div>
                   </div>
 
-                  {/* 라이선스 리스트 */}
+                  {/* ➕ 라이선스 추가 */}
+                  <div style={{ background: C.side, border: `1px dashed ${C.bar}`, borderRadius: 14, padding: '14px 16px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, marginBottom: 10 }}>➕ 라이선스 추가 <span style={{ color: C.sub, fontWeight: 500 }}>— 좌석/사용 수를 넣으면 곳간이가 낭비를 계산해요</span></div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <input value={licForm.name} onChange={(e) => setLicForm({ ...licForm, name: e.target.value })} placeholder="서비스명 (예: Notion)"
+                        style={{ flex: '2 1 150px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={licForm.dept} onChange={(e) => setLicForm({ ...licForm, dept: e.target.value })} placeholder="부서"
+                        style={{ flex: '1 1 80px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                      <input value={licForm.seats} onChange={(e) => setLicForm({ ...licForm, seats: e.target.value })} placeholder="결제 좌석" inputMode="numeric"
+                        style={{ flex: '1 1 90px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={licForm.used} onChange={(e) => setLicForm({ ...licForm, used: e.target.value })} placeholder="실사용 좌석" inputMode="numeric"
+                        style={{ flex: '1 1 90px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={licForm.monthly} onChange={(e) => setLicForm({ ...licForm, monthly: e.target.value })} placeholder="월 비용 (원)" inputMode="numeric"
+                        style={{ flex: '1 1 100px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <button onClick={addLic} style={{ marginLeft: 'auto', background: C.bar, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>분석 + 추가</button>
+                    </div>
+                  </div>
+
+                  {/* 라이선스 리스트 (사용자 추가분 + 예시) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {LICENSE.map((l, i) => {
+                    {allLic.map((l, i) => {
                       const idle = l.seats - l.used
-                      const pct = Math.round((l.used / l.seats) * 100)
+                      const pct = l.seats > 0 ? Math.round((l.used / l.seats) * 100) : 0
+                      const mineIdx = i < myLic.length ? i : -1   // 사용자 추가분 인덱스
                       return (
                         <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{l.name}</span>
                             <Badge tone={l.tone} C={C}>{l.tone === 'red' ? '해지 권장' : l.tone === 'amber' ? '정리 가능' : '유지'}</Badge>
+                            {mineIdx >= 0 && <span style={{ fontSize: 11, color: C.bar, fontWeight: 700 }}>내가 추가함</span>}
                             <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.sub }}>{l.dept} · 월 {won(l.monthly)}원</span>
                           </div>
                           <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6 }}>
@@ -992,12 +1165,20 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                           <div style={{ fontSize: 13, color: C.text, marginTop: 10 }}>
                             <span style={{ fontWeight: 700, color: l.tone === 'red' ? C.red : l.tone === 'amber' ? C.amber : C.green }}>진단: </span>{l.note}
                           </div>
-                          {l.ask && (
-                            <button onClick={() => (onAskQuestion ? onAskQuestion(l.ask) : onOpenChat?.())} style={{
-                              marginTop: 10, background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
-                              padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                            }}>곳간이에게 해지 방법 묻기 →</button>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                            {l.ask && (
+                              <button onClick={() => (onAskQuestion ? onAskQuestion(l.ask, l.answer || null) : onOpenChat?.())} style={{
+                                background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
+                                padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                              }}>곳간이에게 해지 방법 묻기 →</button>
+                            )}
+                            {mineIdx >= 0 && (
+                              <button onClick={() => removeLic(mineIdx)} style={{
+                                background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                                padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                              }}>삭제</button>
+                            )}
+                          </div>
                         </div>
                       )
                     })}
