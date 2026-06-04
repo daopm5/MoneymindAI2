@@ -89,6 +89,28 @@ const AUDIT = [
   { merchant: 'KTX 서울-부산',          dept: '재무팀',    amount: '119,800', when: '수 09:12', score: 14, level: '저위험', tone: 'green', reason: '출장 일정과 일치 — 정상 처리 권고', ask: null },
 ]
 
+// 🛡️ 규칙 기반 자동 위험 점수 — 사용자가 추가한 결제 내역을 곳간이가 자동 분석
+// 입력: { merchant, dept, amount, day('평일'|'주말'), hour(0~23), offsite(근무지 외 여부) }
+function scoreExpense({ merchant = '', amount = '0', day = '평일', hour = 12, offsite = false }) {
+  let score = 0
+  const reasons = []
+  if (day === '주말') { score += 30; reasons.push('주말 결제') }
+  if (hour >= 22 || hour < 6) { score += 20; reasons.push('심야 결제') }
+  if (offsite) { score += 25; reasons.push('근무지 외 지역') }
+  // 접대성 업종 키워드
+  if (/주점|바|고깃집|호프|노래|유흥|횟집|술/.test(merchant)) { score += 20; reasons.push('접대성 업종') }
+  // 개인 성격 품목 키워드
+  if (/생활용품|마트|편의점|쿠팡|배달|카페/.test(merchant)) { score += 12; reasons.push('개인 성격 품목') }
+  // 고액 결제
+  const won = parseInt(String(amount).replace(/[^0-9]/g, ''), 10) || 0
+  if (won >= 300000) { score += 15; reasons.push('고액 결제') }
+  score = Math.min(score, 100)
+  const tone = score >= 70 ? 'red' : score >= 40 ? 'amber' : 'green'
+  const level = score >= 70 ? '고위험' : score >= 40 ? '중위험' : '저위험'
+  const reason = reasons.length ? reasons.join(' · ') + ' — 검토 권장' : '특이사항 없음 — 정상 처리 권고'
+  return { score, tone, level, reason }
+}
+
 // 🗓️ 주말 개인지역 결제 — 주말·근무지 외 지역에서 발생한 법인카드 결제만 모아
 // 직원에게 '업무 관련성 확인'을 요청. status: 대기중 / 업무확인 / 개인용
 const WEEKEND = [
@@ -286,6 +308,38 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
       try { localStorage.setItem('gotgani_weekend', JSON.stringify(next)) } catch {}
       return next
     })
+  }
+
+  // 🛡️ 경비 감사 — 사용자가 직접 추가한 결제 내역 (localStorage 저장)
+  const [myAudit, setMyAudit] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gotgani_myaudit') || '[]') } catch { return [] }
+  })
+  const [auditForm, setAuditForm] = useState({ merchant: '', dept: '', amount: '', day: '평일', hour: '12', offsite: false })
+  const addAudit = () => {
+    if (!auditForm.merchant.trim() || !auditForm.amount.trim()) return
+    const sc = scoreExpense({
+      merchant: auditForm.merchant, amount: auditForm.amount,
+      day: auditForm.day, hour: parseInt(auditForm.hour, 10) || 12, offsite: auditForm.offsite,
+    })
+    const wonStr = (parseInt(auditForm.amount.replace(/[^0-9]/g, ''), 10) || 0).toLocaleString('ko-KR')
+    const entry = {
+      merchant: auditForm.merchant.trim(),
+      dept: auditForm.dept.trim() || '미지정',
+      amount: wonStr,
+      when: `${auditForm.day} ${String(auditForm.hour).padStart(2, '0')}:00`,
+      score: sc.score, level: sc.level, tone: sc.tone, reason: sc.reason,
+      ask: `법인카드로 ${auditForm.merchant.trim()}에서 ${wonStr}원 결제된 건의 업무 관련성을 검토해줘`,
+      _mine: true,
+    }
+    const next = [entry, ...myAudit]
+    setMyAudit(next)
+    try { localStorage.setItem('gotgani_myaudit', JSON.stringify(next)) } catch {}
+    setAuditForm({ merchant: '', dept: '', amount: '', day: '평일', hour: '12', offsite: false })
+  }
+  const removeAudit = (idx) => {
+    const next = myAudit.filter((_, i) => i !== idx)
+    setMyAudit(next)
+    try { localStorage.setItem('gotgani_myaudit', JSON.stringify(next)) } catch {}
   }
 
   // 추가 폼
@@ -662,10 +716,11 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
 
             {/* ▶ 🛡️ AI 경비 감사 */}
             {tab === 'audit' && (() => {
-              const high = AUDIT.filter((a) => a.tone === 'red').length
-              const mid  = AUDIT.filter((a) => a.tone === 'amber').length
-              const low  = AUDIT.filter((a) => a.tone === 'green').length
-              const total = AUDIT.reduce((s, a) => s + parseInt(a.amount.replace(/,/g, ''), 10), 0)
+              const allAudit = [...myAudit, ...AUDIT]   // 사용자가 추가한 건을 위에
+              const high = allAudit.filter((a) => a.tone === 'red').length
+              const mid  = allAudit.filter((a) => a.tone === 'amber').length
+              const low  = allAudit.filter((a) => a.tone === 'green').length
+              const total = allAudit.reduce((s, a) => s + (parseInt(String(a.amount).replace(/,/g, ''), 10) || 0), 0)
               const won = (n) => n.toLocaleString('ko-KR')
               return (
                 <div style={{ animation: 'fadeUp .3s ease' }}>
@@ -680,7 +735,7 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                   {/* 요약 카드 */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 20 }}>
                     {[
-                      { label: '검토 건수', value: `${AUDIT.length}건`, tone: null },
+                      { label: '검토 건수', value: `${allAudit.length}건`, tone: null },
                       { label: '고위험', value: `${high}건`, tone: 'red' },
                       { label: '중위험', value: `${mid}건`, tone: 'amber' },
                       { label: '검토 금액', value: `${won(total)}원`, tone: null },
@@ -692,9 +747,44 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                     ))}
                   </div>
 
-                  {/* 내역 리스트 */}
+                  {/* ➕ 카드내역 직접 추가 — 입력하면 곳간이가 자동으로 위험 점수를 매김 */}
+                  <div style={{ background: C.side, border: `1px dashed ${C.bar}`, borderRadius: 14, padding: '14px 16px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, marginBottom: 10 }}>➕ 카드 내역 추가 <span style={{ color: C.sub, fontWeight: 500 }}>— 넣으면 곳간이가 자동으로 위험도를 매겨요</span></div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <input value={auditForm.merchant} onChange={(e) => setAuditForm({ ...auditForm, merchant: e.target.value })}
+                        placeholder="가맹점 (예: 강남 고깃집)"
+                        style={{ flex: '2 1 160px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={auditForm.dept} onChange={(e) => setAuditForm({ ...auditForm, dept: e.target.value })}
+                        placeholder="부서 (선택)"
+                        style={{ flex: '1 1 90px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                      <input value={auditForm.amount} onChange={(e) => setAuditForm({ ...auditForm, amount: e.target.value })}
+                        placeholder="금액 (원)" inputMode="numeric"
+                        style={{ flex: '1 1 100px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                      <select value={auditForm.day} onChange={(e) => setAuditForm({ ...auditForm, day: e.target.value })}
+                        style={{ background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }}>
+                        <option value="평일">평일</option>
+                        <option value="주말">주말</option>
+                      </select>
+                      <select value={auditForm.hour} onChange={(e) => setAuditForm({ ...auditForm, hour: e.target.value })}
+                        style={{ background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }}>
+                        {Array.from({ length: 24 }, (_, h) => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}시</option>)}
+                      </select>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.sub, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={auditForm.offsite} onChange={(e) => setAuditForm({ ...auditForm, offsite: e.target.checked })} />
+                        근무지 외
+                      </label>
+                      <button onClick={addAudit} style={{
+                        marginLeft: 'auto', background: C.bar, color: '#fff', border: 'none', borderRadius: 9,
+                        padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                      }}>분석 + 추가</button>
+                    </div>
+                  </div>
+
+                  {/* 내역 리스트 (사용자 추가분 + 예시) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {AUDIT.map((a, i) => (
+                    {allAudit.map((a, i) => (
                       <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           {/* 위험 점수 원형 */}
@@ -720,12 +810,21 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                           <span style={{ fontWeight: 700, color: a.tone === 'red' ? C.red : a.tone === 'amber' ? C.amber : C.green }}>AI 1차 검사: </span>
                           {a.reason}
                         </div>
-                        {a.ask && (
-                          <button onClick={() => (onAskQuestion ? onAskQuestion(a.ask) : onOpenChat?.())} style={{
-                            marginTop: 10, background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
-                            padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                          }}>곳간이에게 정밀 검토 요청 →</button>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                          {a.ask && (
+                            <button onClick={() => (onAskQuestion ? onAskQuestion(a.ask) : onOpenChat?.())} style={{
+                              background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
+                              padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                            }}>곳간이에게 정밀 검토 요청 →</button>
+                          )}
+                          {a._mine && (
+                            <button onClick={() => removeAudit(i)} style={{
+                              background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                              padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                            }}>삭제</button>
+                          )}
+                          {a._mine && <span style={{ fontSize: 11, color: C.bar, fontWeight: 700 }}>내가 추가함</span>}
+                        </div>
                       </div>
                     ))}
                   </div>
