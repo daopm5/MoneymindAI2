@@ -22,9 +22,10 @@ export default function App() {
   }, [])
 
   // 시나리오 카드 → 챗봇 열고 질문 주입 (ts로 같은 질문도 매번 다시 전송)
-  const askQuestion = useCallback((text) => {
+  // answer가 있으면 동적 스크립트로 그 답변을 출력
+  const askQuestion = useCallback((text, answer = null) => {
     setChatOpen(true)
-    setPendingQuestion({ text, ts: Date.now() })
+    setPendingQuestion({ text, answer, ts: Date.now() })
   }, [])
 
   const dockBg     = theme === 'dark' ? '#231F18' : '#FFFDF7'

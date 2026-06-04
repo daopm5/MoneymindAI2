@@ -108,7 +108,36 @@ function scoreExpense({ merchant = '', amount = '0', day = '평일', hour = 12, 
   const tone = score >= 70 ? 'red' : score >= 40 ? 'amber' : 'green'
   const level = score >= 70 ? '고위험' : score >= 40 ? '중위험' : '저위험'
   const reason = reasons.length ? reasons.join(' · ') + ' — 검토 권장' : '특이사항 없음 — 정상 처리 권고'
-  return { score, tone, level, reason }
+  return { score, tone, level, reason, category: categorize(merchant) }
+}
+
+// 가맹점명으로 세부 카테고리 자동 분류
+function categorize(merchant = '') {
+  const m = merchant
+  if (/고깃집|횟집|주점|바|호프|식당|국밥|치킨|피자|레스토랑|뷔페/.test(m)) return '식대·접대'
+  if (/카페|커피|스타벅스|투썸|베이커리|디저트/.test(m)) return '카페·간식'
+  if (/KTX|택시|버스|주유|기차|항공|렌터카|톨게이트|주차/.test(m)) return '교통·출장'
+  if (/호텔|리조트|숙박|모텔|펜션/.test(m)) return '숙박'
+  if (/Adobe|클라우드|구독|소프트|라이선스|SaaS|Slack|Figma|GitHub|넷플릭스|노션/i.test(m)) return 'SW·구독'
+  if (/쿠팡|마트|생활용품|편의점|다이소|배달|이마트|홈플러스/.test(m)) return '비품·생활'
+  if (/문구|사무|프린트|토너|복사/.test(m)) return '사무용품'
+  return '기타'
+}
+
+// 추가된 결제 내역을 바탕으로 곳간이가 즉석에서 만드는 동적 답변 (5초 뒤 출력)
+function buildAuditAnswer({ merchant, dept, wonStr, when, category, level, score, reason }) {
+  const emoji = level === '고위험' ? '🚨' : level === '중위험' ? '⚠️' : '✅'
+  const verdict = level === '고위험'
+    ? '업무 관련성 소명이 필요합니다. 담당자에게 영수증·목적 증빙을 요청하세요.'
+    : level === '중위험'
+    ? '한 번 더 확인이 필요합니다. 반복 결제·한도 초과 여부를 점검하세요.'
+    : '특이사항이 없어 정상 처리해도 됩니다.'
+  return `🛡️ AI 1차 감사 결과 — 위험점수 ${score} (${level}) ${emoji}\n`
+    + `\n· 가맹점: ${merchant}`
+    + `\n· 부서: ${dept} · 결제: ${when} · ${wonStr}원`
+    + `\n· 분류: ${category}`
+    + `\n· 사유: ${reason}`
+    + `\n\n📋 권고: ${verdict}`
 }
 
 // 🗓️ 주말 개인지역 결제 — 주말·근무지 외 지역에서 발생한 법인카드 결제만 모아
@@ -317,18 +346,17 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
   const [auditForm, setAuditForm] = useState({ merchant: '', dept: '', amount: '', day: '평일', hour: '12', offsite: false })
   const addAudit = () => {
     if (!auditForm.merchant.trim() || !auditForm.amount.trim()) return
-    const sc = scoreExpense({
-      merchant: auditForm.merchant, amount: auditForm.amount,
-      day: auditForm.day, hour: parseInt(auditForm.hour, 10) || 12, offsite: auditForm.offsite,
-    })
+    const merchant = auditForm.merchant.trim()
+    const dept = auditForm.dept.trim() || '미지정'
+    const hour = parseInt(auditForm.hour, 10) || 12
+    const sc = scoreExpense({ merchant, amount: auditForm.amount, day: auditForm.day, hour, offsite: auditForm.offsite })
     const wonStr = (parseInt(auditForm.amount.replace(/[^0-9]/g, ''), 10) || 0).toLocaleString('ko-KR')
+    const when = `${auditForm.day} ${String(hour).padStart(2, '0')}:00`
     const entry = {
-      merchant: auditForm.merchant.trim(),
-      dept: auditForm.dept.trim() || '미지정',
-      amount: wonStr,
-      when: `${auditForm.day} ${String(auditForm.hour).padStart(2, '0')}:00`,
-      score: sc.score, level: sc.level, tone: sc.tone, reason: sc.reason,
-      ask: `법인카드로 ${auditForm.merchant.trim()}에서 ${wonStr}원 결제된 건의 업무 관련성을 검토해줘`,
+      merchant, dept, amount: wonStr, when,
+      score: sc.score, level: sc.level, tone: sc.tone, reason: sc.reason, category: sc.category,
+      ask: `법인카드로 ${merchant}에서 ${wonStr}원 결제된 건의 업무 관련성을 검토해줘`,
+      answer: buildAuditAnswer({ merchant, dept, wonStr, when, category: sc.category, level: sc.level, score: sc.score, reason: sc.reason }),
       _mine: true,
     }
     const next = [entry, ...myAudit]
@@ -802,6 +830,7 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{a.merchant}</span>
                               <Badge tone={a.tone} C={C}>{a.level}</Badge>
+                              {a.category && <span style={{ fontSize: 11, fontWeight: 700, color: C.sub, background: C.surface, border: `1px solid ${C.line}`, borderRadius: 6, padding: '2px 8px' }}>{a.category}</span>}
                             </div>
                             <div style={{ fontSize: 12.5, color: C.sub, marginTop: 2 }}>{a.dept} · {a.when} · {a.amount}원</div>
                           </div>
@@ -812,7 +841,7 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                           {a.ask && (
-                            <button onClick={() => (onAskQuestion ? onAskQuestion(a.ask) : onOpenChat?.())} style={{
+                            <button onClick={() => (onAskQuestion ? onAskQuestion(a.ask, a.answer || null) : onOpenChat?.())} style={{
                               background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
                               padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                             }}>곳간이에게 정밀 검토 요청 →</button>
