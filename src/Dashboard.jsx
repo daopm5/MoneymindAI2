@@ -79,6 +79,25 @@ const REFUNDS = [
   { store: '11번가',   item: '의류',     amount: '29,900', state: '기한 임박', day: 'D-2',        tone: 'amber', detail: '교환·환불 마감 임박, 서둘러 신청 필요' },
 ]
 
+// 🛡️ AI 경비 감사 — 법인카드 내역을 AI가 1차 검토하고 위험도 점수(0~100)를 매김
+// score 높을수록 위험 · tone: red(고위험) amber(중위험) green(저위험)
+const AUDIT = [
+  { merchant: '강남 ○○ 고깃집',        dept: '영업1팀',   amount: '184,000', when: '토 21:40', score: 82, level: '고위험', tone: 'red',   reason: '주말·개인 지역 심야 결제 — 업무 관련성 확인 필요', ask: '법인카드로 주말 강남 식당에서 18만원 결제된 건이 업무용으로 적정한지 검토해줘' },
+  { merchant: '쿠팡 (생활용품)',        dept: '경영지원',  amount: '43,500',  when: '일 14:05', score: 73, level: '고위험', tone: 'red',   reason: '주말 개인 성격 품목 — 영수증·용도 증빙 요청', ask: '주말에 법인카드로 결제된 쿠팡 생활용품 4.3만원의 업무 용도를 확인해줘' },
+  { merchant: 'Adobe Creative Cloud',   dept: '디자인팀',  amount: '76,000',  when: '15일 정기', score: 58, level: '중위험', tone: 'amber', reason: '동일 라이선스 2건 중복 결제 의심 — 미사용 계정 점검', ask: 'Adobe 라이선스가 중복 결제되거나 안 쓰는 계정이 있는지 점검해줘' },
+  { merchant: '네이버클라우드',          dept: '개발팀',    amount: '132,000', when: '1일 정기',  score: 49, level: '중위험', tone: 'amber', reason: '전월 대비 사용량 급감 — 미사용 리소스 가능성', ask: '네이버클라우드 결제가 실제 사용량 대비 적정한지 확인해줘' },
+  { merchant: 'KTX 서울-부산',          dept: '재무팀',    amount: '119,800', when: '수 09:12', score: 14, level: '저위험', tone: 'green', reason: '출장 일정과 일치 — 정상 처리 권고', ask: null },
+]
+
+// 🗓️ 주말 개인지역 결제 — 주말·근무지 외 지역에서 발생한 법인카드 결제만 모아
+// 직원에게 '업무 관련성 확인'을 요청. status: 대기중 / 업무확인 / 개인용
+const WEEKEND = [
+  { merchant: '제주 ○○ 횟집',   dept: '영업1팀', who: '김OO', amount: '142,000', when: '토 19:30', place: '제주 (근무지 외)', status: '대기중',   tone: 'amber', ask: '주말에 제주에서 결제된 법인카드 14.2만원이 업무 관련 지출인지 확인 요청해줘' },
+  { merchant: '강남 ○○ 바',      dept: '기획팀',  who: '이OO', amount: '88,000',  when: '일 23:10', place: '심야 결제',       status: '대기중',   tone: 'red',   ask: '일요일 심야에 결제된 법인카드 8.8만원의 업무 관련성을 확인 요청해줘' },
+  { merchant: '속초 리조트',      dept: '디자인팀', who: '박OO', amount: '210,000', when: '토 15:00', place: '속초 (근무지 외)', status: '업무확인', tone: 'green', ask: null },
+  { merchant: '쿠팡 (생활용품)', dept: '경영지원', who: '최OO', amount: '43,500',  when: '일 14:05', place: '개인 성격 품목',   status: '개인용',   tone: 'red',   ask: null },
+]
+
 const FLOW = [
   { label: '카드값',   amount: 1800000, pct: 43, tone: 'bar' },
   { label: '구독',     amount: 760000,  pct: 18, tone: 'amber' },
@@ -228,6 +247,19 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
   }
   const undoMission = (m) => { const next = mDone.filter((id) => id !== m.id); setMDone(next); persistMission(next) }
 
+  // 🗓️ 주말 결제 — 각 건의 확인 상태 (대기중 → 업무확인 / 개인용)
+  const [wkStatus, setWkStatus] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gotgani_weekend') || 'null') || WEEKEND.map((w) => w.status) }
+    catch { return WEEKEND.map((w) => w.status) }
+  })
+  const setWk = (i, v) => {
+    setWkStatus((prev) => {
+      const next = prev.map((s, j) => (j === i ? v : s))
+      try { localStorage.setItem('gotgani_weekend', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
+
   // 추가 폼
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ name: '', price: '', payDay: '' })
@@ -309,6 +341,8 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
             { k: 'subs', icon: '📋', label: '구독 목록' },
             { k: 'flow', icon: '📊', label: '현금 흐름' },
             { k: 'refund', icon: '↩️', label: '환불 진단' },
+            { k: 'audit', icon: '🛡️', label: 'AI 경비 감사' },
+            { k: 'weekend', icon: '🗓️', label: '주말 결제 확인' },
             { k: 'scenario', icon: '💬', label: '대화 시나리오' },
             { k: 'mission', icon: '🎯', label: '오늘의 미션' },
           ].map((it) => (
@@ -358,6 +392,8 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
               { k: 'subs', label: '📋 구독 목록' },
               { k: 'flow', label: '📊 현금 흐름' },
               { k: 'refund', label: '↩️ 환불 진단' },
+              { k: 'audit', label: '🛡️ AI 경비 감사' },
+              { k: 'weekend', label: '🗓️ 주말 결제 확인' },
               { k: 'scenario', label: '💬 대화 시나리오' },
               { k: 'mission', label: '🎯 오늘의 미션' },
             ].map((t) => (
@@ -600,6 +636,152 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                 </p>
               </div>
             )}
+
+            {/* ▶ 🛡️ AI 경비 감사 */}
+            {tab === 'audit' && (() => {
+              const high = AUDIT.filter((a) => a.tone === 'red').length
+              const mid  = AUDIT.filter((a) => a.tone === 'amber').length
+              const low  = AUDIT.filter((a) => a.tone === 'green').length
+              const total = AUDIT.reduce((s, a) => s + parseInt(a.amount.replace(/,/g, ''), 10), 0)
+              const won = (n) => n.toLocaleString('ko-KR')
+              return (
+                <div style={{ animation: 'fadeUp .3s ease' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                    <h2 style={{ fontSize: 20, fontWeight: 800 }}>🛡️ AI 경비 감사 리포트</h2>
+                    <Badge tone="blue" C={C}>B2B</Badge>
+                  </div>
+                  <p style={{ color: C.sub, fontSize: 14, marginBottom: 18 }}>
+                    법인카드 내역을 AI가 1차 검토하고 위험도를 점수화합니다. 회계·재무팀은 고위험 건만 집중 확인하면 됩니다.
+                  </p>
+
+                  {/* 요약 카드 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 20 }}>
+                    {[
+                      { label: '검토 건수', value: `${AUDIT.length}건`, tone: null },
+                      { label: '고위험', value: `${high}건`, tone: 'red' },
+                      { label: '중위험', value: `${mid}건`, tone: 'amber' },
+                      { label: '검토 금액', value: `${won(total)}원`, tone: null },
+                    ].map((s, i) => (
+                      <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
+                        <div style={{ fontSize: 12, color: C.sub, marginBottom: 6 }}>{s.label}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: s.tone === 'red' ? C.red : s.tone === 'amber' ? C.amber : C.text }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 내역 리스트 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {AUDIT.map((a, i) => (
+                      <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                          {/* 위험 점수 원형 */}
+                          <div style={{
+                            width: 46, height: 46, borderRadius: '50%', flexShrink: 0,
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            background: a.tone === 'red' ? C.redBg : a.tone === 'amber' ? C.amberBg : C.greenBg,
+                            color: a.tone === 'red' ? C.red : a.tone === 'amber' ? C.amber : C.green,
+                            border: `2px solid ${a.tone === 'red' ? C.red : a.tone === 'amber' ? C.amber : C.green}`,
+                          }}>
+                            <span style={{ fontSize: 15, fontWeight: 800, lineHeight: 1 }}>{a.score}</span>
+                            <span style={{ fontSize: 8, opacity: .8 }}>점</span>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{a.merchant}</span>
+                              <Badge tone={a.tone} C={C}>{a.level}</Badge>
+                            </div>
+                            <div style={{ fontSize: 12.5, color: C.sub, marginTop: 2 }}>{a.dept} · {a.when} · {a.amount}원</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 13, color: C.text, marginTop: 10, lineHeight: 1.55 }}>
+                          <span style={{ fontWeight: 700, color: a.tone === 'red' ? C.red : a.tone === 'amber' ? C.amber : C.green }}>AI 1차 검사: </span>
+                          {a.reason}
+                        </div>
+                        {a.ask && (
+                          <button onClick={() => (onAskQuestion ? onAskQuestion(a.ask) : onOpenChat?.())} style={{
+                            marginTop: 10, background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
+                            padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                          }}>곳간이에게 정밀 검토 요청 →</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ color: C.sub, fontSize: 12.5, marginTop: 16 }}>
+                    위험 점수 0~100 · 70 이상 고위험 · AI가 1차 분류한 결과이며 최종 판단은 담당자가 합니다.
+                  </p>
+                </div>
+              )
+            })()}
+
+            {/* ▶ 🗓️ 주말 개인지역 결제 확인 */}
+            {tab === 'weekend' && (() => {
+              const STATUS_META = {
+                '대기중':   { tone: 'amber', label: '확인 대기중' },
+                '업무확인': { tone: 'green', label: '업무용 확인됨' },
+                '개인용':   { tone: 'red',   label: '개인용 (회수 대상)' },
+              }
+              const pending = wkStatus.filter((s) => s === '대기중').length
+              return (
+                <div style={{ animation: 'fadeUp .3s ease' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: 20, fontWeight: 800 }}>🗓️ 주말 개인지역 결제 확인</h2>
+                    <Badge tone="blue" C={C}>B2B</Badge>
+                    {pending > 0 && <Badge tone="amber" C={C}>확인 대기 {pending}건</Badge>}
+                  </div>
+                  <p style={{ color: C.sub, fontSize: 14, marginBottom: 18 }}>
+                    주말·근무지 외 지역에서 발생한 법인카드 결제입니다. 각 건의 업무 관련성을 담당자에게 확인 요청하세요.
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {WEEKEND.map((w, i) => {
+                      const st = wkStatus[i] || '대기중'
+                      const meta = STATUS_META[st] || STATUS_META['대기중']
+                      return (
+                        <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{w.merchant}</span>
+                            <Badge tone={meta.tone} C={C}>{meta.label}</Badge>
+                          </div>
+                          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 3 }}>
+                            {w.dept} · {w.who} · {w.when} · {w.amount}원 · <span style={{ color: C.red }}>{w.place}</span>
+                          </div>
+
+                          {/* 액션: 업무 관련성 확인 요청 / 처리 */}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                            {st === '대기중' ? (
+                              <>
+                                {w.ask && (
+                                  <button onClick={() => (onAskQuestion ? onAskQuestion(w.ask) : onOpenChat?.())} style={{
+                                    background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
+                                    padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                                  }}>업무 관련성 확인 요청</button>
+                                )}
+                                <button onClick={() => setWk(i, '업무확인')} style={{
+                                  background: 'transparent', color: C.green, border: `1px solid ${C.green}`, borderRadius: 10,
+                                  padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                                }}>업무용으로 확인</button>
+                                <button onClick={() => setWk(i, '개인용')} style={{
+                                  background: 'transparent', color: C.red, border: `1px solid ${C.red}`, borderRadius: 10,
+                                  padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                                }}>개인용으로 처리</button>
+                              </>
+                            ) : (
+                              <button onClick={() => setWk(i, '대기중')} style={{
+                                background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                                padding: '7px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                              }}>↺ 다시 확인 대기로</button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <p style={{ color: C.sub, fontSize: 12.5, marginTop: 16 }}>
+                    '개인용'으로 처리된 건은 환수(회수) 대상으로 분류됩니다. 확인 상태는 자동 저장됩니다.
+                  </p>
+                </div>
+              )
+            })()}
 
             {/* ▶ 대화 시나리오 (포트폴리오 p.9) */}
             {tab === 'scenario' && (
