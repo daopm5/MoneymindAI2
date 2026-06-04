@@ -518,9 +518,8 @@ HBO Max 30일째 미시청 중이에요.
 
   const SCRIPT_DELAY_MS = 5000   // 스크립트 답변을 5초 뒤 출력 (생각하는 척)
 
-  const runScenario = useCallback((question) => {
-    const answer = SCENARIO_SCRIPTS[question]
-    if (!answer) return false
+  // 질문 + (미리 정해진/동적으로 만든) 답변을 5초 뒤 출력. AI 호출 없음.
+  const revealScripted = useCallback((question, answer) => {
     if (isProcessingRef.current || isSpeakingRef.current) return true // 나중에 재시도
     // 1) 사용자 질문 + '입력 중…' 점 표시 (text:null → ChatPanel이 타이핑 점 렌더)
     setMessages(prev => [...prev, { role: 'user', text: question }, { role: 'assistant', text: null }])
@@ -547,6 +546,13 @@ HBO Max 30일째 미시청 중이에요.
     }, SCRIPT_DELAY_MS)
     return true
   }, [enqueueTTS])
+
+  // 미리 등록된 시나리오 스크립트 매칭
+  const runScenario = useCallback((question) => {
+    const answer = SCENARIO_SCRIPTS[question]
+    if (!answer) return false
+    return revealScripted(question, answer)
+  }, [revealScripted])
 
   const sendMessage = useCallback(async (userText) => {
     const text = userText.trim()
@@ -720,19 +726,21 @@ HBO Max 30일째 미시청 중이에요.
 
     const text = (pendingQuestion.text || '').trim()
     if (!text) return
+    const customAnswer = pendingQuestion.answer   // 동적으로 만든 답변(있으면 우선)
     // 봇이 말하는/처리 중이면 잠깐 기다렸다 보냄
     let tries = 0
     const trySend = () => {
       if (!isSpeakingRef.current && !isProcessingRef.current) {
-        // 시나리오면 스크립트 답변 주입, 아니면 일반 전송
-        if (!runScenario(text)) sendMessage(text)
+        // 1순위: 동적 답변(새로 추가한 내역) → 2순위: 등록된 시나리오 → 3순위: 실제 AI
+        if (customAnswer) revealScripted(text, customAnswer)
+        else if (!runScenario(text)) sendMessage(text)
       } else if (tries++ < 30) {
         setTimeout(trySend, 300)
       }
     }
     const t = setTimeout(trySend, 350)   // 도크 열림 애니메이션 후
     return () => clearTimeout(t)
-  }, [pendingQuestion, sendMessage, runScenario])
+  }, [pendingQuestion, sendMessage, runScenario, revealScripted])
 
 
   const ensureMicRecorder = useCallback(() => {
