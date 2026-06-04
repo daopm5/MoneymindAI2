@@ -203,6 +203,38 @@ const LICENSE = [
   { name: 'GitHub Copilot',        dept: '개발팀',    seats: 12, used: 7, lastLogin: '5명 미사용', monthly: 114000, tone: 'red',   note: '5좌석 미사용 — 다운그레이드 검토',   ask: 'GitHub Copilot 12좌석 중 5개가 미사용인데 좌석을 줄이는 게 나을지 검토해줘' },
 ]
 
+// 📅 월별 내역 (달력) — 토스 월별 내역 스타일 · 5·6월 예시
+const CAL = {
+  5: [
+    { d: 2,  merchant: '스타벅스 강남', amount: 6300,   cat: '카페' },
+    { d: 2,  merchant: '쿠팡',          amount: 38900,  cat: '쇼핑' },
+    { d: 5,  merchant: 'GS25',          amount: 4800,   cat: '편의점' },
+    { d: 8,  merchant: '배달의민족',     amount: 21000,  cat: '식비' },
+    { d: 12, merchant: 'Netflix',       amount: 13500,  cat: '구독' },
+    { d: 12, merchant: '이마트',         amount: 64200,  cat: '장보기' },
+    { d: 17, merchant: 'CGV',           amount: 28000,  cat: '문화' },
+    { d: 21, merchant: '카카오T 택시',   amount: 12400,  cat: '교통' },
+    { d: 25, merchant: '카드값 결제',     amount: 480000, cat: '고정' },
+    { d: 25, merchant: '스타벅스',       amount: 5600,   cat: '카페' },
+    { d: 29, merchant: '올리브영',       amount: 33400,  cat: '쇼핑' },
+  ],
+  6: [
+    { d: 1,  merchant: '월세 이체',       amount: 650000, cat: '고정' },
+    { d: 3,  merchant: '배달의민족',     amount: 18500,  cat: '식비' },
+    { d: 3,  merchant: '투썸플레이스',    amount: 7100,   cat: '카페' },
+    { d: 6,  merchant: '쿠팡',          amount: 52300,  cat: '쇼핑' },
+    { d: 9,  merchant: 'Spotify',       amount: 10900,  cat: '구독' },
+    { d: 12, merchant: 'GS25',          amount: 5200,   cat: '편의점' },
+    { d: 14, merchant: '주유소',         amount: 60000,  cat: '교통' },
+    { d: 18, merchant: '교보문고',       amount: 24800,  cat: '문화' },
+    { d: 22, merchant: '마켓컬리',       amount: 41600,  cat: '장보기' },
+    { d: 25, merchant: '카드값 결제',     amount: 512000, cat: '고정' },
+  ],
+}
+// 2026년 5월 1일=목(4), 6월 1일=월(1) — 달력 첫 칸 요일
+const MONTH_FIRST_DOW = { 5: 4, 6: 1 }
+const MONTH_DAYS = { 5: 31, 6: 30 }
+
 const FLOW = [
   { label: '카드값',   amount: 1800000, pct: 43, tone: 'bar' },
   { label: '구독',     amount: 760000,  pct: 18, tone: 'amber' },
@@ -279,8 +311,11 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
     { k: 'weekend',  icon: '🗓️', label: '주말 결제 확인', group: 'b2b' },
     { k: 'license',  icon: '💳', label: '미사용 라이선스', group: 'b2b' },
     { k: 'scenario', icon: '💬', label: '대화 시나리오',  group: 'both' },
+    { k: 'calendar', icon: '📅', label: '월별 내역',      group: 'both' },
   ]
   const [grp, setGrp] = useState('b2c')   // 현재 보고 있는 그룹
+  const [calMonth, setCalMonth] = useState(5)   // 달력: 5월/6월
+  const [calDay, setCalDay] = useState(null)    // 선택한 날짜
   const visibleTabs = TAB_DEFS.filter((t) => t.group === grp || t.group === 'both')
   // 그룹을 바꾸면 그 그룹의 첫 탭으로 자동 이동
   const switchGroup = (g) => {
@@ -384,10 +419,31 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
     })
   }
 
+  // ── 예시 항목 숨김(삭제) 세트 — 예시도 지울 수 있게 ──
+  const [hidden, setHidden] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gotgani_hidden') || '{}') } catch { return {} }
+  })
+  const hideEx = (kind, i) => {
+    setHidden((prev) => {
+      const next = { ...prev, [kind]: [...(prev[kind] || []), i] }
+      try { localStorage.setItem('gotgani_hidden', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
+  const isHidden = (kind, i) => (hidden[kind] || []).includes(i)
+
   // 🛡️ 경비 감사 — 사용자가 직접 추가한 결제 내역 (localStorage 저장)
   const [myAudit, setMyAudit] = useState(() => {
     try { return JSON.parse(localStorage.getItem('gotgani_myaudit') || '[]') } catch { return [] }
   })
+  // 🗓️ 주말 결제 / 💳 라이선스 — 경비감사에서 자동 분배되어 쌓이는 목록
+  const [myWk, setMyWk] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gotgani_mywk') || '[]') } catch { return [] }
+  })
+  const [myLic, setMyLic] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gotgani_mylic') || '[]') } catch { return [] }
+  })
+
   const [auditForm, setAuditForm] = useState({ merchant: '', dept: '', amount: '', day: '평일', hour: '12', offsite: false })
   const addAudit = () => {
     if (!auditForm.merchant.trim() || !auditForm.amount.trim()) return
@@ -396,50 +452,58 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
     const hour = parseInt(auditForm.hour, 10) || 12
     const sc = scoreExpense({ merchant, amount: auditForm.amount, day: auditForm.day, hour, offsite: auditForm.offsite })
     const wonStr = (parseInt(auditForm.amount.replace(/[^0-9]/g, ''), 10) || 0).toLocaleString('ko-KR')
+    const monthly = parseInt(auditForm.amount.replace(/[^0-9]/g, ''), 10) || 0
     const when = `${auditForm.day} ${String(hour).padStart(2, '0')}:00`
-    const entry = {
+
+    // ① 경비 감사에 추가
+    const auditEntry = {
       merchant, dept, amount: wonStr, when,
       score: sc.score, level: sc.level, tone: sc.tone, reason: sc.reason, category: sc.category,
       ask: `법인카드로 ${merchant}에서 ${wonStr}원 결제된 건의 업무 관련성을 검토해줘`,
       answer: buildAuditAnswer({ merchant, dept, wonStr, when, category: sc.category, level: sc.level, score: sc.score, reason: sc.reason }),
       _mine: true,
     }
-    const next = [entry, ...myAudit]
-    setMyAudit(next)
-    try { localStorage.setItem('gotgani_myaudit', JSON.stringify(next)) } catch {}
+    const nextAudit = [auditEntry, ...myAudit]
+    setMyAudit(nextAudit)
+    try { localStorage.setItem('gotgani_myaudit', JSON.stringify(nextAudit)) } catch {}
+
+    // ② 자동 분배 — 주말/근무지외/심야면 '주말 결제 확인' 탭에도
+    const isLate = hour >= 22 || hour < 6
+    if (auditForm.day === '주말' || auditForm.offsite || isLate) {
+      const place = auditForm.offsite ? '근무지 외' : (isLate ? '심야 결제' : '주말 결제')
+      const wkTone = scoreWeekend({ merchant, amount: auditForm.amount, hour, offsite: auditForm.offsite }).tone
+      const wkWhen = `주말 ${String(hour).padStart(2, '0')}:00`
+      const wkEntry = {
+        merchant, dept, who: '담당자', amount: wonStr, when: wkWhen, place, status: '대기중', tone: wkTone,
+        ask: `주말에 ${merchant}에서 결제된 법인카드 ${wonStr}원의 업무 관련성을 확인 요청해줘`,
+        answer: buildWeekendAnswer({ merchant, dept, who: '담당자', wonStr, when: wkWhen, place, tone: wkTone }),
+        _mine: true, _auto: true,
+      }
+      const nextWk = [wkEntry, ...myWk]
+      setMyWk(nextWk)
+      try { localStorage.setItem('gotgani_mywk', JSON.stringify(nextWk)) } catch {}
+    }
+
+    // ③ 자동 분배 — SW·구독 카테고리면 '미사용 라이선스' 탭에도
+    if (sc.category === 'SW·구독') {
+      const licEntry = {
+        name: merchant, dept, seats: 1, used: 0, monthly, tone: 'amber',
+        note: '카드에서 감지된 구독 — 실제 사용 여부 점검 필요', lastLogin: '확인 필요', _sub: true,
+        ask: `${merchant} 구독이 실제로 쓰이고 있는지, 안 쓰면 어떻게 해지하는지 알려줘`,
+        answer: `💳 ${merchant} 구독 감지\n\n· ${dept} · 월 ${wonStr}원\n· 법인카드 내역에서 자동 감지된 구독이에요.\n\n실제 로그인·사용 여부를 확인하고, 미사용이면 해지해 매달 ${wonStr}원을 아끼세요.`,
+        _mine: true, _auto: true,
+      }
+      const nextLic = [licEntry, ...myLic]
+      setMyLic(nextLic)
+      try { localStorage.setItem('gotgani_mylic', JSON.stringify(nextLic)) } catch {}
+    }
+
     setAuditForm({ merchant: '', dept: '', amount: '', day: '평일', hour: '12', offsite: false })
   }
   const removeAudit = (idx) => {
     const next = myAudit.filter((_, i) => i !== idx)
     setMyAudit(next)
     try { localStorage.setItem('gotgani_myaudit', JSON.stringify(next)) } catch {}
-  }
-
-  // 🗓️ 주말 결제 — 사용자 추가분
-  const [myWk, setMyWk] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('gotgani_mywk') || '[]') } catch { return [] }
-  })
-  const [wkForm, setWkForm] = useState({ merchant: '', dept: '', who: '', amount: '', hour: '20', offsite: true })
-  const addWk = () => {
-    if (!wkForm.merchant.trim() || !wkForm.amount.trim()) return
-    const merchant = wkForm.merchant.trim()
-    const dept = wkForm.dept.trim() || '미지정'
-    const who = wkForm.who.trim() || '담당자'
-    const hour = parseInt(wkForm.hour, 10) || 20
-    const wonStr = (parseInt(wkForm.amount.replace(/[^0-9]/g, ''), 10) || 0).toLocaleString('ko-KR')
-    const place = wkForm.offsite ? '근무지 외' : (hour >= 22 || hour < 6 ? '심야 결제' : '주말 결제')
-    const when = `주말 ${String(hour).padStart(2, '0')}:00`
-    const sc = scoreWeekend({ merchant, amount: wkForm.amount, hour, offsite: wkForm.offsite })
-    const entry = {
-      merchant, dept, who, amount: wonStr, when, place, status: '대기중', tone: sc.tone,
-      ask: `주말에 ${merchant}에서 결제된 법인카드 ${wonStr}원의 업무 관련성을 확인 요청해줘`,
-      answer: buildWeekendAnswer({ merchant, dept, who, wonStr, when, place, tone: sc.tone }),
-      _mine: true,
-    }
-    const next = [entry, ...myWk]
-    setMyWk(next)
-    try { localStorage.setItem('gotgani_mywk', JSON.stringify(next)) } catch {}
-    setWkForm({ merchant: '', dept: '', who: '', amount: '', hour: '20', offsite: true })
   }
   const removeWk = (idx) => {
     const next = myWk.filter((_, i) => i !== idx)
@@ -450,32 +514,6 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
     const next = myWk.map((w, i) => (i === idx ? { ...w, status: v } : w))
     setMyWk(next)
     try { localStorage.setItem('gotgani_mywk', JSON.stringify(next)) } catch {}
-  }
-
-  // 💳 미사용 라이선스 — 사용자 추가분
-  const [myLic, setMyLic] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('gotgani_mylic') || '[]') } catch { return [] }
-  })
-  const [licForm, setLicForm] = useState({ name: '', dept: '', seats: '', used: '', monthly: '' })
-  const addLic = () => {
-    if (!licForm.name.trim() || !licForm.seats.trim()) return
-    const name = licForm.name.trim()
-    const dept = licForm.dept.trim() || '미지정'
-    const seats = parseInt(licForm.seats.replace(/[^0-9]/g, ''), 10) || 0
-    const used = Math.min(parseInt(licForm.used.replace(/[^0-9]/g, ''), 10) || 0, seats)
-    const monthly = parseInt(licForm.monthly.replace(/[^0-9]/g, ''), 10) || 0
-    const sc = scoreLicense({ seats, used })
-    const entry = {
-      name, dept, seats, used, monthly, tone: sc.tone, note: sc.note,
-      lastLogin: sc.idle > 0 ? `${sc.idle}좌석 미사용` : '전원 활성',
-      ask: sc.idle > 0 ? `${name} ${seats}좌석 중 ${sc.idle}개가 미사용인데 정리 방법을 알려줘` : null,
-      answer: buildLicenseAnswer({ name, dept, seats, used, monthly, idle: sc.idle, tone: sc.tone }),
-      _mine: true,
-    }
-    const next = [entry, ...myLic]
-    setMyLic(next)
-    try { localStorage.setItem('gotgani_mylic', JSON.stringify(next)) } catch {}
-    setLicForm({ name: '', dept: '', seats: '', used: '', monthly: '' })
   }
   const removeLic = (idx) => {
     const next = myLic.filter((_, i) => i !== idx)
@@ -857,7 +895,10 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
 
             {/* ▶ 🛡️ AI 경비 감사 */}
             {tab === 'audit' && (() => {
-              const allAudit = [...myAudit, ...AUDIT]   // 사용자가 추가한 건을 위에
+              const allAudit = [
+                ...myAudit.map((a, i) => ({ ...a, _src: 'mine', _i: i })),
+                ...AUDIT.map((a, i) => ({ ...a, _src: 'ex', _i: i })).filter((a) => !isHidden('audit', a._i)),
+              ]
               const high = allAudit.filter((a) => a.tone === 'red').length
               const mid  = allAudit.filter((a) => a.tone === 'amber').length
               const low  = allAudit.filter((a) => a.tone === 'green').length
@@ -925,8 +966,8 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
 
                   {/* 내역 리스트 (사용자 추가분 + 예시) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {allAudit.map((a, i) => (
-                      <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
+                    {allAudit.map((a) => (
+                      <div key={`${a._src}-${a._i}`} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                           {/* 위험 점수 원형 */}
                           <div style={{
@@ -959,13 +1000,11 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                               padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                             }}>곳간이에게 정밀 검토 요청 →</button>
                           )}
-                          {a._mine && (
-                            <button onClick={() => removeAudit(i)} style={{
-                              background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
-                              padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                            }}>삭제</button>
-                          )}
                           {a._mine && <span style={{ fontSize: 11, color: C.bar, fontWeight: 700 }}>내가 추가함</span>}
+                          <button onClick={() => (a._src === 'mine' ? removeAudit(a._i) : hideEx('audit', a._i))} style={{
+                            background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                            padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                          }}>삭제</button>
                         </div>
                       </div>
                     ))}
@@ -986,7 +1025,7 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
               }
               const allWk = [
                 ...myWk.map((w, i) => ({ ...w, _src: 'mine', _i: i })),
-                ...WEEKEND.map((w, i) => ({ ...w, _src: 'ex', _i: i, status: wkStatus[i] || '대기중' })),
+                ...WEEKEND.map((w, i) => ({ ...w, _src: 'ex', _i: i, status: wkStatus[i] || '대기중' })).filter((w) => !isHidden('wk', w._i)),
               ]
               const pending = allWk.filter((w) => w.status === '대기중').length
               return (
@@ -1000,33 +1039,12 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                     주말·근무지 외 지역에서 발생한 법인카드 결제입니다. 각 건의 업무 관련성을 담당자에게 확인 요청하세요.
                   </p>
 
-                  {/* ➕ 주말 결제 내역 추가 */}
-                  <div style={{ background: C.side, border: `1px dashed ${C.bar}`, borderRadius: 14, padding: '14px 16px', marginBottom: 16 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, marginBottom: 10 }}>➕ 주말 결제 추가 <span style={{ color: C.sub, fontWeight: 500 }}>— 넣으면 곳간이가 위험도를 매겨요</span></div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <input value={wkForm.merchant} onChange={(e) => setWkForm({ ...wkForm, merchant: e.target.value })} placeholder="가맹점 (예: 제주 횟집)"
-                        style={{ flex: '2 1 150px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                      <input value={wkForm.dept} onChange={(e) => setWkForm({ ...wkForm, dept: e.target.value })} placeholder="부서"
-                        style={{ flex: '1 1 80px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                      <input value={wkForm.who} onChange={(e) => setWkForm({ ...wkForm, who: e.target.value })} placeholder="결제자"
-                        style={{ flex: '1 1 80px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                      <input value={wkForm.amount} onChange={(e) => setWkForm({ ...wkForm, amount: e.target.value })} placeholder="금액 (원)" inputMode="numeric"
-                        style={{ flex: '1 1 90px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-                      <select value={wkForm.hour} onChange={(e) => setWkForm({ ...wkForm, hour: e.target.value })}
-                        style={{ background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }}>
-                        {Array.from({ length: 24 }, (_, h) => <option key={h} value={String(h)}>{String(h).padStart(2, '0')}시</option>)}
-                      </select>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.sub, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={wkForm.offsite} onChange={(e) => setWkForm({ ...wkForm, offsite: e.target.checked })} /> 근무지 외
-                      </label>
-                      <button onClick={addWk} style={{ marginLeft: 'auto', background: C.bar, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>분석 + 추가</button>
-                    </div>
+                  <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 12, padding: '10px 14px', marginBottom: 16, fontSize: 12.5, color: C.text }}>
+                    💡 내역은 <b>AI 경비 감사</b> 탭에서 추가하면, 주말·근무지 외·심야 결제가 여기로 <b>자동 분류</b>돼요.
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {allWk.map((w, i) => {
+                    {allWk.map((w) => {
                       const st = w.status || '대기중'
                       const meta = STATUS_META[st] || STATUS_META['대기중']
                       const setSt = (v) => (w._src === 'mine' ? setMyWkStatus(w._i, v) : setWk(w._i, v))
@@ -1059,18 +1077,22 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                                   background: 'transparent', color: C.red, border: `1px solid ${C.red}`, borderRadius: 10,
                                   padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                                 }}>개인용으로 처리</button>
-                                {w._src === 'mine' && (
-                                  <button onClick={() => removeWk(w._i)} style={{
-                                    background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
-                                    padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                                  }}>삭제</button>
-                                )}
+                                <button onClick={() => (w._src === 'mine' ? removeWk(w._i) : hideEx('wk', w._i))} style={{
+                                  background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                                  padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                }}>삭제</button>
                               </>
                             ) : (
-                              <button onClick={() => setSt('대기중')} style={{
-                                background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
-                                padding: '7px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                              }}>↺ 다시 확인 대기로</button>
+                              <>
+                                <button onClick={() => setSt('대기중')} style={{
+                                  background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                                  padding: '7px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                                }}>↺ 다시 확인 대기로</button>
+                                <button onClick={() => (w._src === 'mine' ? removeWk(w._i) : hideEx('wk', w._i))} style={{
+                                  background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                                  padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                }}>삭제</button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -1087,7 +1109,10 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
             {/* ▶ 💳 미사용 라이선스 */}
             {tab === 'license' && (() => {
               const won = (n) => n.toLocaleString('ko-KR')
-              const allLic = [...myLic, ...LICENSE]
+              const allLic = [
+                ...myLic.map((l, i) => ({ ...l, _src: 'mine', _i: i })),
+                ...LICENSE.map((l, i) => ({ ...l, _src: 'ex', _i: i })).filter((l) => !isHidden('lic', l._i)),
+              ]
               // 미사용 좌석 비율로 낭비 추정액 계산
               const waste = allLic.reduce((s, l) => {
                 const idle = l.seats - l.used
@@ -1119,43 +1144,27 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                     </div>
                   </div>
 
-                  {/* ➕ 라이선스 추가 */}
-                  <div style={{ background: C.side, border: `1px dashed ${C.bar}`, borderRadius: 14, padding: '14px 16px', marginBottom: 16 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: C.text, marginBottom: 10 }}>➕ 라이선스 추가 <span style={{ color: C.sub, fontWeight: 500 }}>— 좌석/사용 수를 넣으면 곳간이가 낭비를 계산해요</span></div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <input value={licForm.name} onChange={(e) => setLicForm({ ...licForm, name: e.target.value })} placeholder="서비스명 (예: Notion)"
-                        style={{ flex: '2 1 150px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                      <input value={licForm.dept} onChange={(e) => setLicForm({ ...licForm, dept: e.target.value })} placeholder="부서"
-                        style={{ flex: '1 1 80px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-                      <input value={licForm.seats} onChange={(e) => setLicForm({ ...licForm, seats: e.target.value })} placeholder="결제 좌석" inputMode="numeric"
-                        style={{ flex: '1 1 90px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                      <input value={licForm.used} onChange={(e) => setLicForm({ ...licForm, used: e.target.value })} placeholder="실사용 좌석" inputMode="numeric"
-                        style={{ flex: '1 1 90px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                      <input value={licForm.monthly} onChange={(e) => setLicForm({ ...licForm, monthly: e.target.value })} placeholder="월 비용 (원)" inputMode="numeric"
-                        style={{ flex: '1 1 100px', minWidth: 0, background: C.search, border: `1px solid ${C.line}`, borderRadius: 9, padding: '9px 11px', color: C.text, fontSize: 13, outline: 'none' }} />
-                      <button onClick={addLic} style={{ marginLeft: 'auto', background: C.bar, color: '#fff', border: 'none', borderRadius: 9, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>분석 + 추가</button>
-                    </div>
+                  <div style={{ background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 12, padding: '10px 14px', marginBottom: 16, fontSize: 12.5, color: C.text }}>
+                    💡 <b>AI 경비 감사</b>에서 SW·구독 결제를 추가하면 여기로 <b>자동 감지</b>돼요. 실제 사용 여부만 확인하면 됩니다.
                   </div>
 
                   {/* 라이선스 리스트 (사용자 추가분 + 예시) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {allLic.map((l, i) => {
+                    {allLic.map((l) => {
                       const idle = l.seats - l.used
                       const pct = l.seats > 0 ? Math.round((l.used / l.seats) * 100) : 0
-                      const mineIdx = i < myLic.length ? i : -1   // 사용자 추가분 인덱스
                       return (
-                        <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
+                        <div key={`${l._src}-${l._i}`} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{l.name}</span>
                             <Badge tone={l.tone} C={C}>{l.tone === 'red' ? '해지 권장' : l.tone === 'amber' ? '정리 가능' : '유지'}</Badge>
-                            {mineIdx >= 0 && <span style={{ fontSize: 11, color: C.bar, fontWeight: 700 }}>내가 추가함</span>}
+                            {l._auto && <span style={{ fontSize: 11, color: C.bar, fontWeight: 700 }}>카드 자동감지</span>}
                             <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.sub }}>{l.dept} · 월 {won(l.monthly)}원</span>
                           </div>
                           <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6 }}>
-                            좌석 {l.used}/{l.seats} 사용 · 마지막 로그인: {l.lastLogin}
-                            {idle > 0 && <span style={{ color: C.red, fontWeight: 700 }}> · 미사용 {idle}좌석</span>}
+                            {l._sub
+                              ? '카드 내역에서 감지된 구독 · 사용 여부 미확인'
+                              : <>좌석 {l.used}/{l.seats} 사용 · 마지막 로그인: {l.lastLogin}{idle > 0 && <span style={{ color: C.red, fontWeight: 700 }}> · 미사용 {idle}좌석</span>}</>}
                           </div>
                           {/* 사용률 바 */}
                           <div style={{ height: 8, borderRadius: 999, background: C.surface, overflow: 'hidden', marginTop: 8 }}>
@@ -1172,12 +1181,10 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                                 padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                               }}>곳간이에게 해지 방법 묻기 →</button>
                             )}
-                            {mineIdx >= 0 && (
-                              <button onClick={() => removeLic(mineIdx)} style={{
-                                background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
-                                padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                              }}>삭제</button>
-                            )}
+                            <button onClick={() => (l._src === 'mine' ? removeLic(l._i) : hideEx('lic', l._i))} style={{
+                              background: 'transparent', color: C.sub, border: `1px solid ${C.line}`, borderRadius: 10,
+                              padding: '7px 11px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                            }}>삭제</button>
                           </div>
                         </div>
                       )
@@ -1186,6 +1193,87 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                   <p style={{ color: C.sub, fontSize: 12.5, marginTop: 16 }}>
                     절약 가능액은 미사용 좌석 × 좌석당 단가로 추정한 값입니다. 실제 해지는 각 서비스 관리자 페이지에서 진행하세요.
                   </p>
+                </div>
+              )
+            })()}
+
+            {/* ▶ 📅 월별 내역 (달력) */}
+            {tab === 'calendar' && (() => {
+              const won = (n) => n.toLocaleString('ko-KR')
+              const txns = CAL[calMonth] || []
+              const total = txns.reduce((s, t) => s + t.amount, 0)
+              // 날짜별 합계
+              const byDay = {}
+              txns.forEach((t) => { byDay[t.d] = (byDay[t.d] || 0) + t.amount })
+              const maxDay = Math.max(1, ...Object.values(byDay))
+              const days = MONTH_DAYS[calMonth]
+              const firstDow = MONTH_FIRST_DOW[calMonth]
+              const cells = [...Array(firstDow).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
+              const dayTxns = calDay ? txns.filter((t) => t.d === calDay) : []
+              const WD = ['일', '월', '화', '수', '목', '금', '토']
+              return (
+                <div style={{ animation: 'fadeUp .3s ease' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: 20, fontWeight: 800 }}>📅 월별 내역</h2>
+                    <div style={{ display: 'flex', gap: 4, background: C.surface, borderRadius: 10, padding: 4 }}>
+                      {[5, 6].map((m) => (
+                        <button key={m} onClick={() => { setCalMonth(m); setCalDay(null) }} style={{
+                          padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                          background: calMonth === m ? C.bar : 'transparent', color: calMonth === m ? '#fff' : C.sub,
+                        }}>{m}월</button>
+                      ))}
+                    </div>
+                    <span style={{ marginLeft: 'auto', fontSize: 14, color: C.sub }}>이번 달 지출 <b style={{ color: C.text, fontSize: 16 }}>{won(total)}원</b></span>
+                  </div>
+
+                  {/* 요일 헤더 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6, marginBottom: 6 }}>
+                    {WD.map((w, i) => (
+                      <div key={w} style={{ textAlign: 'center', fontSize: 12, fontWeight: 700, color: i === 0 ? C.red : i === 6 ? C.blue : C.sub }}>{w}</div>
+                    ))}
+                  </div>
+                  {/* 날짜 셀 */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+                    {cells.map((d, i) => {
+                      if (d === null) return <div key={`e${i}`} />
+                      const amt = byDay[d] || 0
+                      const has = amt > 0
+                      const sel = calDay === d
+                      const intensity = has ? 0.15 + 0.55 * (amt / maxDay) : 0
+                      return (
+                        <button key={d} onClick={() => setCalDay(sel ? null : d)} style={{
+                          aspectRatio: '1 / 1', borderRadius: 10, cursor: 'pointer', padding: 4,
+                          border: `1px solid ${sel ? C.bar : C.line}`,
+                          background: sel ? C.bar : (has ? `rgba(201,160,99,${intensity})` : C.side),
+                          color: sel ? '#fff' : C.text,
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                        }}>
+                          <span style={{ fontSize: 12, fontWeight: 700 }}>{d}</span>
+                          {has && <span style={{ fontSize: 9, opacity: .9 }}>{amt >= 10000 ? `${Math.round(amt / 1000)}k` : won(amt)}</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {/* 선택한 날짜 상세 */}
+                  <div style={{ marginTop: 18 }}>
+                    {calDay ? (
+                      <>
+                        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 10 }}>{calMonth}월 {calDay}일 · {won(byDay[calDay] || 0)}원</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {dayTxns.map((t, j) => (
+                            <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.side, border: `1px solid ${C.line}`, borderRadius: 12, padding: '11px 14px' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: C.sub, background: C.surface, border: `1px solid ${C.line}`, borderRadius: 6, padding: '2px 8px' }}>{t.cat}</span>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{t.merchant}</span>
+                              <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 800, color: C.text }}>{won(t.amount)}원</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p style={{ color: C.sub, fontSize: 13 }}>날짜를 누르면 그날 결제 내역이 보여요. 색이 진할수록 지출이 큰 날이에요.</p>
+                    )}
+                  </div>
                 </div>
               )
             })()}
