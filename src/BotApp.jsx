@@ -387,27 +387,164 @@ export default function BotApp({ embedded = false, pendingQuestion = null } = {}
 ③ 적금 1회 미루기 (50만원)
 
 가장 편한 방법은 ①번! 지금 환불 신청 도와드릴까요?`,
+
+    // ── B2B · AI 경비 감사 ──
+    '법인카드로 주말 강남 식당에서 18만원 결제된 건이 업무용으로 적정한지 검토해줘':
+`🛡️ AI 1차 감사 결과 — 위험점수 82 (고위험)
+
+· 결제: 토 21:40 · 강남 · 184,000원
+· 사유: 주말·심야·접대성 업종 → 업무 관련성 불명확
+
+📋 권고
+① 담당자에게 미팅 상대·목적 증빙 요청
+② 접대비 한도(1회 5만원) 초과분 확인
+③ 미소명 시 개인용 분류 → 환수 대상
+
+소명 요청을 지금 발송할까요?`,
+
+    '주말에 법인카드로 결제된 쿠팡 생활용품 4.3만원의 업무 용도를 확인해줘':
+`🛡️ AI 1차 감사 결과 — 위험점수 73 (고위험)
+
+· 결제: 일 14:05 · 쿠팡 생활용품 · 43,500원
+· 사유: 주말·개인 성격 품목 → 업무 용도 확인 필요
+
+📋 권고
+① 구매 품목 내역(영수증) 첨부 요청
+② 사무용품 여부 확인 — 생활용품이면 개인용
+③ 반복 패턴(월 2회 이상) 점검`,
+
+    'Adobe 라이선스가 중복 결제되거나 안 쓰는 계정이 있는지 점검해줘':
+`💳 라이선스 점검 결과
+
+· Adobe CC 8좌석 결제 중 실사용 5좌석
+· 3좌석 3개월+ 미로그인 → 월 114,000원 낭비
+· 디자인팀 ↔ 마케팅팀 중복 계정 1건 발견
+
+✅ 3좌석 해지 시 연 1,368,000원 절감`,
+
+    '네이버클라우드 결제가 실제 사용량 대비 적정한지 확인해줘':
+`💳 사용량 점검 결과
+
+· 네이버클라우드 월 132,000원 결제 중
+· 전월 대비 인스턴스 가동률 38%↓
+· 미사용 스토리지 2건 자동결제 유지 중
+
+✅ 미사용 리소스 정리 시 월 약 5만원 절감`,
+
+    // ── B2B · 주말 결제 확인 ──
+    '주말에 제주에서 결제된 법인카드 14.2만원이 업무 관련 지출인지 확인 요청해줘':
+`🗓️ 주말 개인지역 결제 확인 요청
+
+· 영업1팀 김OO · 토 19:30 · 제주(근무지 외) · 142,000원
+· 출장 일정 등록 내역 없음 → 업무 관련성 확인 필요
+
+담당자에게 '업무 관련성 소명' 알림을 발송했습니다.
+3일 내 미소명 시 개인용으로 자동 분류됩니다.`,
+
+    '일요일 심야에 결제된 법인카드 8.8만원의 업무 관련성을 확인 요청해줘':
+`🗓️ 주말 개인지역 결제 확인 요청 — 고위험
+
+· 기획팀 이OO · 일 23:10 · 심야 결제 · 88,000원
+· 심야·주말 → 개인 지출 가능성 높음
+
+담당자 소명 요청을 발송했습니다.
+영수증·업무 목적 미제출 시 환수 대상으로 처리됩니다.`,
+
+    // ── B2B · 미사용 라이선스 ──
+    'Adobe Creative Cloud 8좌석 중 3개가 3개월 넘게 미사용인데 해지 절차를 알려줘':
+`💳 Adobe CC 해지 가이드
+
+1) Admin Console → 사용자 → 미사용 3계정 선택
+2) '라이선스 회수' → 다음 결제주기부터 미청구
+3) 작업파일은 회수 전 공유 폴더로 이전
+
+💡 3좌석 해지 시 월 114,000원 · 연 1,368,000원 절감`,
+
+    'Slack 좌석 40개 중 9명이 30일 넘게 미접속인데 비활성 좌석을 정리하는 방법 알려줘':
+`💳 Slack 좌석 정리 가이드
+
+1) 관리자 → 멤버 관리 → '30일+ 미접속' 필터
+2) 퇴사자 9명 계정 비활성화(Deactivate)
+3) 다음 청구일 좌석 수 자동 감소
+
+💡 9석 정리 시 월 약 81,000원 절감`,
+
+    'GitHub Copilot 12좌석 중 5개가 미사용인데 좌석을 줄이는 게 나을지 검토해줘':
+`💳 GitHub Copilot 좌석 검토
+
+· 12좌석 중 7좌석만 주 1회+ 사용
+· 5좌석 30일 미사용 → 월 47,500원 낭비
+
+✅ 권고: 7좌석으로 다운그레이드
+재투입은 즉시 가능하므로 줄이는 편이 유리합니다.`,
+
+    // ── B2C · 오늘의 미션 ──
+    '이번 달 내 현금 흐름을 예측해줘':
+`📊 이번 달 현금 흐름 예측
+
+· 현재 잔액 4,150,000원
+· 예정 지출: 카드값 -1,800,000 · 월세 -650,000 · 구독 -760,000
+· 월말 예상 잔액: 약 940,000원 (안전)
+
+💡 구독 정리하면 +760,000원까지 여유 가능`,
+
+    '내가 돌려받을 수 있는 환불이 있는지 확인해줘':
+`💸 돌려받을 환불 3건 발견
+
+· 쿠팡 운동기구 38,000원 (배송 9일째·환불 가능)
+· 마켓컬리 주방용품 52,000원 (5일째·청약철회 가능)
+· 11번가 의류 29,900원 (D-2·기한 임박!)
+
+총 119,900원 — 11번가부터 서두르세요.`,
+
+    '내가 안 쓰는데 자동결제되고 있는 구독을 찾아줘':
+`🔍 새는 구독 점검 결과
+
+· HBO Max 15,900원 — 최근 30일 시청 0회 (해지 추천)
+· ChatGPT Plus 20,000원 — 무료 대체 가능 검토
+· 쿠팡 와우 7,890원 — 월 1회 미만 사용
+
+✅ 정리 시 월 약 36,000원 절약`,
+
+    '오늘 바로 실천할 수 있는 절약 팁 하나만 알려줘':
+`🐷 오늘의 절약 한 가지
+
+"안 쓰는 구독 1개만 오늘 해지하기"
+
+HBO Max 30일째 미시청 중이에요.
+지금 해지하면 이번 달 15,900원이 바로 굳습니다.
+3분이면 끝나요 — 도와드릴까요?`,
   }
+
+  const SCRIPT_DELAY_MS = 5000   // 스크립트 답변을 5초 뒤 출력 (생각하는 척)
 
   const runScenario = useCallback((question) => {
     const answer = SCENARIO_SCRIPTS[question]
     if (!answer) return false
     if (isProcessingRef.current || isSpeakingRef.current) return true // 나중에 재시도
-    // 사용자 질문 + 곳간이 답변을 바로 주입 (AI 호출 없음)
-    setMessages(prev => [...prev, { role: 'user', text: question }, { role: 'assistant', text: answer }])
-    historyRef.current = [
-      ...historyRef.current,
-      { role: 'user', content: question },
-      { role: 'assistant', content: answer },
-    ]
-    if (sessionIdRef.current) {
-      saveChat(sessionIdRef.current, 'user', question)
-      saveChat(sessionIdRef.current, 'assistant', answer)
-    }
-    // 음성 모드면 읽어주기 (문장 단위로)
-    if (conversationModeRef.current !== 'ttt') {
-      answer.split('\n').filter(s => s.trim()).forEach(line => enqueueTTS(line.trim()))
-    }
+    // 1) 사용자 질문 + '입력 중…' 점 표시 (text:null → ChatPanel이 타이핑 점 렌더)
+    setMessages(prev => [...prev, { role: 'user', text: question }, { role: 'assistant', text: null }])
+    isProcessingRef.current = true
+    setIsProcessing(true)
+    historyRef.current = [...historyRef.current, { role: 'user', content: question }]
+    if (sessionIdRef.current) saveChat(sessionIdRef.current, 'user', question)
+    // 2) 5초 뒤 마지막 '입력 중' 말풍선을 실제 답변으로 교체
+    setTimeout(() => {
+      setMessages(prev => {
+        const next = [...prev]
+        for (let i = next.length - 1; i >= 0; i--) {
+          if (next[i].role === 'assistant' && next[i].text === null) { next[i] = { role: 'assistant', text: answer }; break }
+        }
+        return next
+      })
+      historyRef.current = [...historyRef.current, { role: 'assistant', content: answer }]
+      if (sessionIdRef.current) saveChat(sessionIdRef.current, 'assistant', answer)
+      if (conversationModeRef.current !== 'ttt') {
+        answer.split('\n').filter(s => s.trim()).forEach(line => enqueueTTS(line.trim()))
+      }
+      isProcessingRef.current = false
+      setIsProcessing(false)
+    }, SCRIPT_DELAY_MS)
     return true
   }, [enqueueTTS])
 
