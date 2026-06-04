@@ -1,0 +1,86 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Light theme (default) — beige + brown palette ── */
+:root {
+  --bg:            #fdfaf3;       /* 채팅 패널과 통일된 웜 화이트 */
+  --surface:       #ffffff;
+  --panel:         #fdfaf3;       /* 채팅 패널 */
+  --border:        rgba(139, 90, 43, 0.18);
+  --gold:          #b88a5e;
+  --gold-dim:      #8a6b52;
+  --text:          #3a2817;       /* 에스프레소 브라운 */
+  --muted:         #8a7560;       /* 웜 그레이 브라운 */
+  --blue:          #2563eb;
+  --green:         #16a34a;
+  --radius:        16px;
+  --scrollbar:     rgba(139, 90, 43, 0.28);
+
+  /* Stage(영상·아바타·음성·텍스트 카드) 표면 — 라이트 브라운 */
+  --card-bg-from:  #f4e6cf;       /* 매우 라이트한 베이지 탠 */
+  --card-bg-to:    #e0c8a4;       /* 따뜻한 라이트 탠 */
+  --media-bg:      #d4b896;       /* 라이트 브라운 (빈 비디오 스테이지) */
+  --stage-text:    #3a2817;       /* 라이트 브라운 위 에스프레소 텍스트 */
+  --stage-muted:   #6b4f33;       /* 중간 다크 브라운 */
+
+  --overlay-soft:  rgba(139, 90, 43, 0.06);
+  --overlay-track: rgba(139, 90, 43, 0.20);
+  --shadow-card:   0 18px 50px rgba(58, 40, 23, 0.14);
+  --shadow-media:  0 14px 42px rgba(58, 40, 23, 0.22);
+
+  /* Visualizer bars (warm earth tones for light theme) */
+  --bar-grad-1:    linear-gradient(to top, #8a6b52, #b88a5e 52%, #d4a574 82%, #f0d4a8);
+  --bar-grad-2:    linear-gradient(to top, #5c4530, #8a6b52 62%, #c9a878);
+  --bar-grad-3:    linear-gradient(to top, #7a5a3a, #b88a5e 58%, #e0c8a4);
+  --bar-grad-4:    linear-gradient(to top, #5c4530, #b88a5e 62%, #d4a574);
+  --bar-grad-5:    linear-gradient(to top, #b88a5e, #f0d4a8);
+  --bar-shadow:    0 0 7px rgba(184, 138, 94, 0.35);
+  --vis-glow:      drop-shadow(0 0 14px rgba(184, 138, 94, 0.32)) drop-shadow(0 0 28px rgba(139, 90, 43, 0.18));
+}
+
+/* ── Dark theme (opt-in via [data-theme="dark"]) — warm mocha + gold ── */
+[data-theme="dark"] {
+  --bg:            #1E1B16;       /* 짙은 모카 */
+  --surface:       #28241D;
+  --panel:         #211E18;
+  --border:        rgba(217,176,116,0.14);
+  --gold:          #D9B074;
+  --gold-dim:      #b58f5c;
+  --text:          #F1E9D8;       /* 따뜻한 크림 */
+  --muted:         #A99B81;
+  --blue:          #7FA3C4;
+  --green:         #9DB173;
+  --scrollbar:     rgba(217,176,116,0.22);
+
+  --card-bg-from:  #342e23;
+  --card-bg-to:    #221E17;
+  --media-bg:      #2a251d;
+  --stage-text:    #F1E9D8;
+  --stage-muted:   #A99B81;
+
+  --overlay-soft:  rgba(217,176,116,0.05);
+  --overlay-track: rgba(217,176,116,0.12);
+  --shadow-card:   0 24px 70px rgba(0,0,0,0.36);
+  --shadow-media:  0 0 60px rgba(0,0,0,0.5);
+
+  /* Visualizer bars (warm gold/amber for dark theme) */
+  --bar-grad-1:    linear-gradient(to top, #b58f5c, #D9B074 52%, #e6c389 82%, #f0d9a8);
+  --bar-grad-2:    linear-gradient(to top, #9a7748, #c9a063 62%, #e0b85c);
+  --bar-grad-3:    linear-gradient(to top, #b58f5c, #d9b074 58%, #ecd29a);
+  --bar-grad-4:    linear-gradient(to top, #a9824e, #d4a574 62%, #e6c389);
+  --bar-grad-5:    linear-gradient(to top, #D9B074, #f0d9a8);
+  --bar-shadow:    0 0 7px rgba(217, 176, 116, 0.4);
+  --vis-glow:      drop-shadow(0 0 14px rgba(217, 176, 116, 0.3)) drop-shadow(0 0 28px rgba(201, 160, 99, 0.16));
+}
+
+html, body, #root {
+  height: 100%;
+  font-family: 'Noto Sans KR', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }

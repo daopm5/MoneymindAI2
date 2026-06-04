@@ -1,0 +1,61 @@
+.app {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;        /* 모바일 Safari 주소창 보정 */
+  overflow: hidden;
+}
+
+/* ── 대시보드 안에 플로팅으로 임베드될 때: 넓은 가로 패널 (좌 아바타 / 우 채팅) ── */
+.app.embedded {
+  height: 100%;
+  width: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+  flex-direction: row;          /* 가로 분할 = 원래 설계 */
+}
+
+/* (AvatarPanel/ChatPanel은 각자 CSS Module이라 클래스명이 해시됨 →
+    위치 기반 child 셀렉터로 제어. CSS Modules는 클래스가 아닌 부분은
+    그대로 통과시키므로 :global 불필요.) */
+.app.embedded > div:nth-child(1) {  /* AvatarPanel (왼쪽) */
+  width: 46% !important;
+  height: 100%;
+  flex: none;
+  padding: 12px 10px !important;
+  gap: 8px !important;
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+  overflow: hidden !important;
+  justify-content: center;
+}
+.app.embedded > div:nth-child(2) {  /* ChatPanel (오른쪽) */
+  width: 54% !important;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-left: none !important;
+  box-shadow: none !important;
+}
+
+/* 미디어 무대(3D 곳간이): 남는 높이를 채우되 넘치지 않게 */
+.app.embedded > div:nth-child(1) > div:first-child {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+/* 모드 토글(📷🎙) 행: 살짝 작게 */
+.app.embedded > div:nth-child(1) [aria-label="대화 방식 설정"] {
+  margin: 0 !important;
+  transform: scale(0.9);
+  flex-shrink: 0;
+}
+.app.embedded > div:nth-child(1) button {
+  flex-shrink: 0;
+}
+
+/* ── 모바일 (≤768px): 위·아래 split ── */
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+  }
+}
