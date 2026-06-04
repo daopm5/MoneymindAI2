@@ -98,6 +98,15 @@ const WEEKEND = [
   { merchant: '쿠팡 (생활용품)', dept: '경영지원', who: '최OO', amount: '43,500',  when: '일 14:05', place: '개인 성격 품목',   status: '개인용',   tone: 'red',   ask: null },
 ]
 
+// 💳 미사용 라이선스 — 결제는 되는데 로그인/사용이 없는 SaaS 좌석을 탐지해 해지 추천
+// lastLogin: 마지막 로그인 · seats: 결제좌석/실사용 · monthly: 월 비용(원)
+const LICENSE = [
+  { name: 'Adobe Creative Cloud', dept: '디자인팀',  seats: 8,  used: 5, lastLogin: '없음 (3개월+)', monthly: 304000, tone: 'red',   note: '3좌석 미사용 — 즉시 해지 권장', ask: 'Adobe Creative Cloud 8좌석 중 3개가 3개월 넘게 미사용인데 해지 절차를 알려줘' },
+  { name: 'Slack 비즈니스+',       dept: '전사',      seats: 40, used: 31, lastLogin: '9명 30일+', monthly: 360000, tone: 'amber', note: '퇴사·미접속 9명 좌석 정리 가능',      ask: 'Slack 좌석 40개 중 9명이 30일 넘게 미접속인데 비활성 좌석을 정리하는 방법 알려줘' },
+  { name: 'Figma 프로',            dept: '기획팀',    seats: 6,  used: 6, lastLogin: '전원 활성', monthly: 108000, tone: 'green', note: '전 좌석 활성 — 유지 권장',          ask: null },
+  { name: 'GitHub Copilot',        dept: '개발팀',    seats: 12, used: 7, lastLogin: '5명 미사용', monthly: 114000, tone: 'red',   note: '5좌석 미사용 — 다운그레이드 검토',   ask: 'GitHub Copilot 12좌석 중 5개가 미사용인데 좌석을 줄이는 게 나을지 검토해줘' },
+]
+
 const FLOW = [
   { label: '카드값',   amount: 1800000, pct: 43, tone: 'bar' },
   { label: '구독',     amount: 760000,  pct: 18, tone: 'amber' },
@@ -343,6 +352,7 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
             { k: 'refund', icon: '↩️', label: '환불 진단' },
             { k: 'audit', icon: '🛡️', label: 'AI 경비 감사' },
             { k: 'weekend', icon: '🗓️', label: '주말 결제 확인' },
+            { k: 'license', icon: '💳', label: '미사용 라이선스' },
             { k: 'scenario', icon: '💬', label: '대화 시나리오' },
             { k: 'mission', icon: '🎯', label: '오늘의 미션' },
           ].map((it) => (
@@ -394,6 +404,7 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
               { k: 'refund', label: '↩️ 환불 진단' },
               { k: 'audit', label: '🛡️ AI 경비 감사' },
               { k: 'weekend', label: '🗓️ 주말 결제 확인' },
+              { k: 'license', label: '💳 미사용 라이선스' },
               { k: 'scenario', label: '💬 대화 시나리오' },
               { k: 'mission', label: '🎯 오늘의 미션' },
             ].map((t) => (
@@ -778,6 +789,81 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
                   </div>
                   <p style={{ color: C.sub, fontSize: 12.5, marginTop: 16 }}>
                     '개인용'으로 처리된 건은 환수(회수) 대상으로 분류됩니다. 확인 상태는 자동 저장됩니다.
+                  </p>
+                </div>
+              )
+            })()}
+
+            {/* ▶ 💳 미사용 라이선스 */}
+            {tab === 'license' && (() => {
+              const won = (n) => n.toLocaleString('ko-KR')
+              // 미사용 좌석 비율로 낭비 추정액 계산
+              const waste = LICENSE.reduce((s, l) => {
+                const idle = l.seats - l.used
+                return s + (idle > 0 ? Math.round((l.monthly / l.seats) * idle) : 0)
+              }, 0)
+              const cutCount = LICENSE.filter((l) => l.tone === 'red').length
+              return (
+                <div style={{ animation: 'fadeUp .3s ease' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: 20, fontWeight: 800 }}>💳 미사용 라이선스</h2>
+                    <Badge tone="blue" C={C}>B2B</Badge>
+                  </div>
+                  <p style={{ color: C.sub, fontSize: 14, marginBottom: 18 }}>
+                    결제는 되는데 로그인·사용이 없는 좌석을 탐지합니다. 중복 구독·퇴사자 계정·요금제 과잉을 정리해 구독료를 절약하세요.
+                  </p>
+
+                  {/* 절약 가능액 강조 카드 */}
+                  <div style={{
+                    background: C.greenBg, border: `1px solid ${C.green}`, borderRadius: 16,
+                    padding: '16px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10,
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 4 }}>이번 달 절약 가능 (미사용 좌석 기준)</div>
+                      <div style={{ fontSize: 26, fontWeight: 800, color: C.green }}>약 {won(waste)}원<span style={{ fontSize: 14, fontWeight: 600 }}> / 월</span></div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 4 }}>해지 권장</div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: C.red }}>{cutCount}건</div>
+                    </div>
+                  </div>
+
+                  {/* 라이선스 리스트 */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {LICENSE.map((l, i) => {
+                      const idle = l.seats - l.used
+                      const pct = Math.round((l.used / l.seats) * 100)
+                      return (
+                        <div key={i} style={{ background: C.side, border: `1px solid ${C.line}`, borderRadius: 14, padding: '14px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{l.name}</span>
+                            <Badge tone={l.tone} C={C}>{l.tone === 'red' ? '해지 권장' : l.tone === 'amber' ? '정리 가능' : '유지'}</Badge>
+                            <span style={{ marginLeft: 'auto', fontSize: 12.5, color: C.sub }}>{l.dept} · 월 {won(l.monthly)}원</span>
+                          </div>
+                          <div style={{ fontSize: 12.5, color: C.sub, marginTop: 6 }}>
+                            좌석 {l.used}/{l.seats} 사용 · 마지막 로그인: {l.lastLogin}
+                            {idle > 0 && <span style={{ color: C.red, fontWeight: 700 }}> · 미사용 {idle}좌석</span>}
+                          </div>
+                          {/* 사용률 바 */}
+                          <div style={{ height: 8, borderRadius: 999, background: C.surface, overflow: 'hidden', marginTop: 8 }}>
+                            <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999,
+                              background: l.tone === 'red' ? C.red : l.tone === 'amber' ? C.amber : C.green }} />
+                          </div>
+                          <div style={{ fontSize: 13, color: C.text, marginTop: 10 }}>
+                            <span style={{ fontWeight: 700, color: l.tone === 'red' ? C.red : l.tone === 'amber' ? C.amber : C.green }}>진단: </span>{l.note}
+                          </div>
+                          {l.ask && (
+                            <button onClick={() => (onAskQuestion ? onAskQuestion(l.ask) : onOpenChat?.())} style={{
+                              marginTop: 10, background: C.bar, color: '#fff', border: 'none', borderRadius: 10,
+                              padding: '7px 13px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                            }}>곳간이에게 해지 방법 묻기 →</button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <p style={{ color: C.sub, fontSize: 12.5, marginTop: 16 }}>
+                    절약 가능액은 미사용 좌석 × 좌석당 단가로 추정한 값입니다. 실제 해지는 각 서비스 관리자 페이지에서 진행하세요.
                   </p>
                 </div>
               )
