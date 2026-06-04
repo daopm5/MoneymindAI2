@@ -173,6 +173,25 @@ function Badge({ tone, children, C }) {
 
 export default function Dashboard({ onOpenChat, onAskQuestion }) {
   const [tab, setTab] = useState('subs')
+  // 탭 정의 + B2C/B2B 그룹 (scenario는 공통)
+  const TAB_DEFS = [
+    { k: 'subs',     icon: '📋', label: '구독 목록',      group: 'b2c' },
+    { k: 'flow',     icon: '📊', label: '현금 흐름',      group: 'b2c' },
+    { k: 'refund',   icon: '↩️', label: '환불 진단',      group: 'b2c' },
+    { k: 'mission',  icon: '🎯', label: '오늘의 미션',    group: 'b2c' },
+    { k: 'audit',    icon: '🛡️', label: 'AI 경비 감사',   group: 'b2b' },
+    { k: 'weekend',  icon: '🗓️', label: '주말 결제 확인', group: 'b2b' },
+    { k: 'license',  icon: '💳', label: '미사용 라이선스', group: 'b2b' },
+    { k: 'scenario', icon: '💬', label: '대화 시나리오',  group: 'both' },
+  ]
+  const [grp, setGrp] = useState('b2c')   // 현재 보고 있는 그룹
+  const visibleTabs = TAB_DEFS.filter((t) => t.group === grp || t.group === 'both')
+  // 그룹을 바꾸면 그 그룹의 첫 탭으로 자동 이동
+  const switchGroup = (g) => {
+    setGrp(g)
+    const first = TAB_DEFS.find((t) => t.group === g)
+    if (first && !TAB_DEFS.some((t) => t.k === tab && (t.group === g || t.group === 'both'))) setTab(first.k)
+  }
   const [statusFilter, setStatusFilter] = useState('전체')
   const [q, setQ] = useState('')
   const [refundQ, setRefundQ] = useState('')
@@ -345,17 +364,19 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
 
       <div style={{ display: 'flex' }}>
         {/* 좌측 사이드바 */}
-        <aside style={{ width: 176, minHeight: 'calc(100vh - 52px)', background: C.side, padding: '20px 12px', flexShrink: 0 }}>
-          {[
-            { k: 'subs', icon: '📋', label: '구독 목록' },
-            { k: 'flow', icon: '📊', label: '현금 흐름' },
-            { k: 'refund', icon: '↩️', label: '환불 진단' },
-            { k: 'audit', icon: '🛡️', label: 'AI 경비 감사' },
-            { k: 'weekend', icon: '🗓️', label: '주말 결제 확인' },
-            { k: 'license', icon: '💳', label: '미사용 라이선스' },
-            { k: 'scenario', icon: '💬', label: '대화 시나리오' },
-            { k: 'mission', icon: '🎯', label: '오늘의 미션' },
-          ].map((it) => (
+        <aside style={{ width: 176, minHeight: 'calc(100vh - 52px)', background: C.side, padding: '16px 12px', flexShrink: 0 }}>
+          {/* B2C / B2B 전환 */}
+          <div style={{ display: 'flex', gap: 4, background: C.surface, borderRadius: 10, padding: 4, marginBottom: 14 }}>
+            {[{ g: 'b2c', label: '개인 B2C' }, { g: 'b2b', label: '기업 B2B' }].map((x) => (
+              <button key={x.g} onClick={() => switchGroup(x.g)} style={{
+                flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', cursor: 'pointer',
+                fontSize: 12.5, fontWeight: 700,
+                background: grp === x.g ? C.bar : 'transparent',
+                color: grp === x.g ? '#fff' : C.sub,
+              }}>{x.label}</button>
+            ))}
+          </div>
+          {visibleTabs.map((it) => (
             <button key={it.k} onClick={() => setTab(it.k)} style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px',
               borderRadius: 10, marginBottom: 4, cursor: 'pointer', textAlign: 'left',
@@ -397,22 +418,13 @@ export default function Dashboard({ onOpenChat, onAskQuestion }) {
           </div>
 
           {/* 탭 */}
-          <div style={{ display: 'flex', gap: 24, padding: '0 32px', borderBottom: `1px solid ${C.line}` }}>
-            {[
-              { k: 'subs', label: '📋 구독 목록' },
-              { k: 'flow', label: '📊 현금 흐름' },
-              { k: 'refund', label: '↩️ 환불 진단' },
-              { k: 'audit', label: '🛡️ AI 경비 감사' },
-              { k: 'weekend', label: '🗓️ 주말 결제 확인' },
-              { k: 'license', label: '💳 미사용 라이선스' },
-              { k: 'scenario', label: '💬 대화 시나리오' },
-              { k: 'mission', label: '🎯 오늘의 미션' },
-            ].map((t) => (
+          <div style={{ display: 'flex', gap: 24, padding: '0 32px', borderBottom: `1px solid ${C.line}`, flexWrap: 'wrap' }}>
+            {visibleTabs.map((t) => (
               <button key={t.k} onClick={() => setTab(t.k)} style={{
                 padding: '16px 2px', background: 'none', border: 'none', cursor: 'pointer',
                 color: tab === t.k ? C.text : C.sub, fontSize: 15, fontWeight: tab === t.k ? 700 : 500,
                 borderBottom: `2px solid ${tab === t.k ? C.bar : 'transparent'}`, marginBottom: -1,
-              }}>{t.label}</button>
+              }}>{t.icon} {t.label}</button>
             ))}
           </div>
 
